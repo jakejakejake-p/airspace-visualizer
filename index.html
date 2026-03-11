@@ -1,0 +1,2593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTV Airspace 3D - Burlington VT 50nm</title>
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Titillium Web', 'Segoe UI', Arial, sans-serif; }
+
+  /* Selection indicator: black circle instead of green square */
+  .cesium-selection-wrapper svg { display: none; }
+  .cesium-selection-wrapper {
+    width: 40px !important; height: 40px !important;
+    border: 3px solid #000 !important;
+    border-radius: 50% !important;
+    background: none !important;
+    pointer-events: none;
+    margin-left: -20px !important; margin-top: -20px !important;
+  }
+
+  /* Master section toggle styling */
+  .section-header {
+    display: flex; align-items: center; gap: 6px;
+    margin: 10px 0 4px; padding-bottom: 3px;
+    border-bottom: 1px solid #ddd;
+  }
+  .section-header h3 { margin: 0; border: none; padding: 0; flex: 1; }
+  .section-master-toggle { accent-color: #2a7ac0; cursor: pointer; }
+  #cesiumContainer { width: 100%; height: 100%; }
+
+  /* Dual-range altitude slider */
+  #traffic-alt-min::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%; background: #00cc44; border: 2px solid #fff; cursor: pointer; margin-top: -5px; }
+  #traffic-alt-max::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%; background: #00cc44; border: 2px solid #fff; cursor: pointer; margin-top: -5px; }
+  #traffic-alt-min::-webkit-slider-runnable-track { height: 4px; background: #ddd; border-radius: 2px; }
+  #traffic-alt-max::-webkit-slider-runnable-track { height: 4px; background: transparent; border-radius: 2px; }
+
+  /* Control panel */
+  #panel {
+    position: absolute; top: 10px; left: 10px; z-index: 10;
+    background: rgba(255, 255, 255, 0.94); color: #222;
+    border: 1px solid #ccc;
+    border-radius: 8px; padding: 12px 14px;
+    max-height: calc(100vh - 20px); overflow-y: auto;
+    width: 300px; font-size: 13px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    scrollbar-width: thin;
+  }
+  #panel h2 { color: #1a5fa0; font-size: 16px; margin-bottom: 8px; }
+  #panel h3 { color: #2a7ac0; font-size: 13px; margin: 10px 0 4px; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
+
+  .layer-group { margin-bottom: 4px; }
+  .layer-toggle {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 0; cursor: pointer;
+  }
+  .layer-toggle:hover { color: #000; }
+  .layer-toggle input { accent-color: #2a7ac0; cursor: pointer; }
+  .layer-toggle .swatch {
+    width: 12px; height: 12px; border-radius: 2px; display: inline-block; flex-shrink: 0;
+  }
+  .layer-toggle label { cursor: pointer; flex: 1; }
+
+  .sub-layers { margin-left: 18px; }
+  .group-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 0; cursor: pointer; font-weight: 600;
+  }
+  .group-header:hover { color: #000; }
+  .collapse-btn {
+    width: 16px; height: 16px; background: none; border: none;
+    color: #888; cursor: pointer; font-size: 12px; text-align: center; padding: 0;
+  }
+  .collapse-btn:hover { color: #000; }
+
+  /* Info popup */
+  #info-box {
+    position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(255, 255, 255, 0.96); color: #222;
+    border: 1px solid #ccc;
+    border-radius: 6px; padding: 10px 16px; font-size: 13px;
+    max-width: 500px; display: none;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  #info-box .close-btn {
+    position: absolute; top: 4px; right: 8px; background: none; border: none;
+    color: #888; cursor: pointer; font-size: 16px;
+  }
+  #info-box .close-btn:hover { color: #000; }
+  #info-box h4 { color: #1a5fa0; margin-bottom: 4px; }
+
+  /* Legend */
+  #legend {
+    position: absolute; bottom: 10px; right: 10px; z-index: 10;
+    background: rgba(255, 255, 255, 0.94); color: #333;
+    border: 1px solid #ccc;
+    border-radius: 6px; padding: 8px 12px; font-size: 11px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  #legend .item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+  #legend .line { width: 20px; height: 3px; border-radius: 1px; }
+</style>
+</head>
+<body>
+<div id="cesiumContainer"></div>
+
+<div id="panel">
+  <h2>BTV Airspace 3D</h2>
+  <div style="color:#999; font-size:11px; margin-bottom:8px;">Burlington VT - 50nm radius</div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-airspace" checked>
+    <h3><label for="master-airspace">Airspace</label></h3>
+  </div>
+  <div id="airspace-layers" class="section-body" data-master="master-airspace"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-airways" checked>
+    <h3><label for="master-airways">Airways</label></h3>
+  </div>
+  <div id="airways-layers" class="section-body" data-master="master-airways"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-approaches">
+    <h3><label for="master-approaches">Approaches by Airport</label></h3>
+  </div>
+  <div id="approaches-layers" class="section-body" data-master="master-approaches"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-airports" checked>
+    <h3><label for="master-airports">Airports</label></h3>
+  </div>
+  <div id="airports-layers" class="section-body" data-master="master-airports"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-navaids" checked>
+    <h3><label for="master-navaids">Navaids</label></h3>
+  </div>
+  <div id="navaid-layers" class="section-body" data-master="master-navaids"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-waypoints">
+    <h3><label for="master-waypoints">Waypoints</label></h3>
+  </div>
+  <div id="waypoint-layers" class="section-body" data-master="master-waypoints"></div>
+
+  <div class="section-header">
+    <input type="checkbox" class="section-master-toggle" id="master-other" checked>
+    <h3><label for="master-other">Other</label></h3>
+  </div>
+  <div id="other-layers" class="section-body" data-master="master-other"></div>
+
+  <h3>Live Traffic</h3>
+  <div id="traffic-layers"></div>
+  <div id="traffic-time-control" style="display:none; margin-top:4px;">
+    <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+      <span style="font-size:11px; color:#666;">-30m</span>
+      <input type="range" id="traffic-time-slider" min="0" max="1800" step="10" value="1800"
+        style="flex:1; cursor:pointer;">
+      <span style="font-size:11px; color:#666;">Live</span>
+    </div>
+    <div style="font-size:11px; color:#666; text-align:center;">
+      <span id="traffic-time-label">Live</span>
+      <span id="traffic-aircraft-count" style="margin-left:8px;"></span>
+    </div>
+    <div style="margin-top:6px; font-size:11px; color:#666;">
+      <div style="display:flex; justify-content:space-between;">
+        <span>Altitude Filter</span>
+        <span id="traffic-alt-label">0' – 60,000'</span>
+      </div>
+      <div style="position:relative; height:20px; margin-top:2px;">
+        <input type="range" id="traffic-alt-min" min="0" max="60000" step="500" value="0"
+          style="position:absolute; width:100%; pointer-events:none; -webkit-appearance:none; appearance:none; background:transparent; cursor:pointer; z-index:2;">
+        <input type="range" id="traffic-alt-max" min="0" max="60000" step="500" value="60000"
+          style="position:absolute; width:100%; pointer-events:none; -webkit-appearance:none; appearance:none; background:transparent; cursor:pointer; z-index:2;">
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:2px;">
+        <span>0'</span><span>60,000'</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>Vertical Exaggeration</h3>
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+    <span style="font-size:11px; color:#666;">1x</span>
+    <input type="range" id="vert-exag" min="1" max="10" step="0.5" value="1"
+      style="flex:1; cursor:pointer;">
+    <span style="font-size:11px; color:#666;">10x</span>
+    <span id="vert-exag-label" style="font-size:12px; font-weight:bold; min-width:32px;">1x</span>
+  </div>
+
+  <h3>Terrain</h3>
+  <div style="font-size:11px; color:#666; margin-bottom:4px;">
+    If terrain is flat, get a free token at
+    <a href="https://ion.cesium.com/signup" target="_blank" style="color:#2a7ac0">ion.cesium.com/signup</a>,
+    then paste it below:
+  </div>
+  <div style="display:flex; gap:4px;">
+    <input id="cesium-token" type="text" placeholder="Paste Cesium Ion token..."
+      style="flex:1; font-size:11px; padding:3px 6px; border:1px solid #ccc; border-radius:3px;">
+    <button onclick="applyToken()" style="font-size:11px; padding:3px 8px; border:1px solid #ccc; border-radius:3px; cursor:pointer; background:#f0f0f0;">Apply</button>
+  </div>
+  <div id="terrain-status" style="font-size:10px; color:#888; margin-top:3px;"></div>
+</div>
+
+<div id="info-box">
+  <button class="close-btn" onclick="document.getElementById('info-box').style.display='none'">&times;</button>
+  <div id="info-content"></div>
+</div>
+
+<div id="legend">
+  <div class="item"><div class="line" style="background:#4488ff"></div> Class C</div>
+  <div class="item"><div class="line" style="background:#884488"></div> Class E</div>
+  <div class="item"><div class="line" style="background:#ffaa00"></div> Victor Airways</div>
+  <div class="item"><div class="line" style="background:#00ccff"></div> T-Routes</div>
+  <div class="item"><div class="line" style="background:#44ff44"></div> ILS/LOC</div>
+  <div class="item"><div class="line" style="background:#ff6644"></div> RNAV (GPS)</div>
+  <div class="item"><div class="line" style="background:#ffcc00"></div> VOR/Other</div>
+  <div class="item"><div class="line" style="background:#00cc44"></div> Live Traffic</div>
+</div>
+
+<script>
+// ============================================================
+// CesiumJS Setup
+// ============================================================
+
+// Cesium Ion token - get a free one at https://ion.cesium.com/tokens
+// Replace this with your own token for reliable terrain:
+Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYWE1OWUxNy1mMWZiLTQzYjYtYTQ0OS1kMWFjYmFkNjc5YzciLCJpZCI6NjQ3MjcsImlhdCI6MTcwNDk4NjczMX0.PEfDkFpGBliG0gR_JN6u3Rl0BFrSih_0wzMBnGFpNko';
+
+const viewer = new Cesium.Viewer('cesiumContainer', {
+  baseLayerPicker: true,
+  geocoder: false,
+  homeButton: false,
+  sceneModePicker: true,
+  navigationHelpButton: false,
+  animation: false,
+  timeline: false,
+  fullscreenButton: true,
+  selectionIndicator: true,
+  infoBox: false,
+});
+
+// --- Terrain setup: try Cesium Ion, then fall back to open terrain ---
+const terrainReady = (async function setupTerrain() {
+  try {
+    viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
+    console.log('Loaded Cesium Ion World Terrain');
+  } catch(e1) {
+    console.warn('Cesium Ion terrain failed, trying open terrain...', e1);
+    try {
+      viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(
+        'https://api.maptiler.com/tiles/terrain-quantized-mesh-v2/?key=get_your_own_OpIi9ZULNHzrESv6T2vL'
+      );
+      console.log('Loaded MapTiler terrain');
+    } catch(e2) {
+      console.warn('All terrain providers failed, using ellipsoid', e2);
+    }
+  }
+})();
+
+// --- Set Esri World Ocean base imagery (must complete before chart layers load) ---
+const baseImageryReady = (async () => {
+  try {
+    const esriOcean = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer'
+    );
+    viewer.imageryLayers.removeAll();
+    viewer.imageryLayers.addImageryProvider(esriOcean);
+  } catch(e) { console.warn('Could not load Esri World Ocean base map', e); }
+})();
+
+// --- White background & clean sky ---
+viewer.scene.backgroundColor = Cesium.Color.WHITE;
+viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#e8e8e0');
+viewer.scene.skyBox.show = false;
+viewer.scene.sun.show = false;
+viewer.scene.moon.show = false;
+viewer.scene.skyAtmosphere.show = false;
+viewer.scene.fog.enabled = false;
+
+// --- Camera controls: scroll=zoom, left=pan, right=orbit around click point ---
+const controller = viewer.scene.screenSpaceCameraController;
+
+// In CesiumJS 3D mode:
+//   "rotate" = spinning the globe (this IS panning on a globe)
+//   "tilt"   = orbiting the camera around the look-at point
+
+// Left drag = pan (rotate the globe under the camera)
+controller.rotateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+
+// Right drag = orbit/tilt around the surface point under the cursor
+controller.tiltEventTypes = [Cesium.CameraEventType.RIGHT_DRAG];
+
+// Scroll = zoom
+controller.zoomEventTypes = [
+  Cesium.CameraEventType.WHEEL,
+  Cesium.CameraEventType.PINCH
+];
+
+// Disable unused actions
+controller.translateEventTypes = [];
+controller.lookEventTypes = [];
+
+// Reduce minimum zoom distance for closer inspection
+controller.minimumZoomDistance = 50;
+
+// --- Right-click orbit: set the orbit center to wherever the user right-clicks ---
+const handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+handler.setInputAction(function(movement) {
+  // Pick the 3D position on the globe under the right-click
+  const pickedPosition = viewer.scene.pickPosition(movement.position);
+  if (Cesium.defined(pickedPosition)) {
+    // Convert to cartographic to verify it's valid
+    const carto = Cesium.Cartographic.fromCartesian(pickedPosition);
+    if (carto) {
+      // Set camera to look at this point, preserving current distance and angles
+      const cameraPos = viewer.camera.positionWC;
+      const distance = Cesium.Cartesian3.distance(cameraPos, pickedPosition);
+      const heading = viewer.camera.heading;
+      const pitch = viewer.camera.pitch;
+
+      viewer.camera.lookAt(
+        pickedPosition,
+        new Cesium.HeadingPitchRange(heading, pitch, distance)
+      );
+      // Unlock the camera so subsequent drags use this new center
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    }
+  }
+}, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+
+// Start camera at KBTV
+viewer.camera.flyTo({
+  destination: Cesium.Cartesian3.fromDegrees(-73.153, 44.472, 120000),
+  orientation: {
+    heading: Cesium.Math.toRadians(0),
+    pitch: Cesium.Math.toRadians(-45),
+    roll: 0
+  },
+  duration: 0
+});
+
+// Enable terrain depth testing so entities go behind terrain
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// Vertical exaggeration slider
+const vertSlider = document.getElementById('vert-exag');
+const vertLabel = document.getElementById('vert-exag-label');
+let vertRebuildTimer = null;
+// Restore saved exaggeration
+try {
+  const savedExag = localStorage.getItem('btvVertExag');
+  if (savedExag) {
+    const val = parseFloat(savedExag);
+    vertExag = val;
+    vertSlider.value = val;
+    vertLabel.textContent = val === 1 ? '1x' : val % 1 === 0 ? val + 'x' : val.toFixed(1) + 'x';
+  }
+} catch(e) {}
+vertSlider.addEventListener('input', () => {
+  const val = parseFloat(vertSlider.value);
+  vertLabel.textContent = val === 1 ? '1x' : val % 1 === 0 ? val + 'x' : val.toFixed(1) + 'x';
+  clearTimeout(vertRebuildTimer);
+  vertRebuildTimer = setTimeout(() => {
+    vertExag = val;
+    try { localStorage.setItem('btvVertExag', val); } catch(e) {}
+    rebuildEntities();
+  }, 100);
+});
+
+// ============================================================
+// FAA Chart imagery layers (VFR Sectional, IFR Low)
+// ============================================================
+
+const chartLayers = {};
+
+// Load chart layers asynchronously (after base imagery to avoid removeAll race)
+(async function loadChartLayers() {
+  await baseImageryReady;
+  try {
+    const vfrProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+      'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer'
+    );
+    chartLayers.vfr_sectional = viewer.imageryLayers.addImageryProvider(vfrProvider);
+    chartLayers.vfr_sectional.alpha = 0.85;
+    // Restore saved state, default to hidden
+    const vfrSaved = individualStates['toggle_chart_vfr_sectional'];
+    chartLayers.vfr_sectional.show = vfrSaved === true;
+    console.log('VFR Sectional chart loaded');
+  } catch(e) { console.warn('Could not load VFR Sectional:', e); }
+
+  try {
+    const ifrProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+      'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer'
+    );
+    chartLayers.ifr_low = viewer.imageryLayers.addImageryProvider(ifrProvider);
+    chartLayers.ifr_low.alpha = 0.85;
+    const ifrSaved = individualStates['toggle_chart_ifr_low'];
+    chartLayers.ifr_low.show = ifrSaved === true;
+    console.log('IFR Low chart loaded');
+  } catch(e) { console.warn('Could not load IFR Low:', e); }
+})();
+
+function toggleChartLayer(layerKey, visible) {
+  if (chartLayers[layerKey]) {
+    chartLayers[layerKey].show = visible;
+  }
+}
+
+// ============================================================
+// Live Traffic (airplanes.live + OpenSky history)
+// ============================================================
+
+const liveTraffic = {
+  enabled: false,
+  interval: null,
+  aircraft: {},       // hex -> { entity, trail, positions: [{lat,lon,alt,time}], info, historyLoaded }
+  pollRate: 5000,     // 5 seconds
+  center: { lat: 44.4719, lon: -73.1533 },
+  radius: 50,         // nm
+  viewTime: null,     // null = live, or a Date.now() ms timestamp for historical view
+  altMin: 0,          // altitude filter min (feet)
+  altMax: 60000,      // altitude filter max (feet)
+  historyQueue: [],   // hexes waiting for OpenSky track fetch
+  historyBusy: false  // throttle OpenSky requests
+};
+
+// Fetch track history from OpenSky for a single aircraft
+async function fetchTrackHistory(hex) {
+  try {
+    const resp = await fetch(`https://opensky-network.org/api/tracks/all?icao24=${hex.toLowerCase()}&time=0`);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.path || data.path.length === 0) return null;
+    // Convert OpenSky waypoints to our format: {lat, lon, alt (feet), time (ms)}
+    return data.path
+      .filter(wp => wp[1] != null && wp[2] != null && isFinite(wp[1]) && isFinite(wp[2]))
+      .map(wp => ({
+        lat: wp[1],
+        lon: wp[2],
+        alt: (wp[3] != null && isFinite(wp[3])) ? Math.round(wp[3] * 3.28084) : 0,
+        time: wp[0] * 1000
+      }));
+  } catch(e) {
+    return null;
+  }
+}
+
+// Process history queue one at a time (respect OpenSky rate limit)
+async function processHistoryQueue() {
+  if (liveTraffic.historyBusy || liveTraffic.historyQueue.length === 0) return;
+  liveTraffic.historyBusy = true;
+
+  const hex = liveTraffic.historyQueue.shift();
+  const craft = liveTraffic.aircraft[hex];
+  if (craft && !craft.historyLoaded) {
+    const history = await fetchTrackHistory(hex);
+    if (history && history.length > 0 && liveTraffic.aircraft[hex]) {
+      // Merge history before existing live positions
+      const existingTimes = new Set(craft.positions.map(p => p.time));
+      const newPoints = history.filter(p => !existingTimes.has(p.time));
+      craft.positions = [...newPoints, ...craft.positions].sort((a, b) => a.time - b.time);
+      craft.historyLoaded = true;
+      updateTrafficDisplay();
+    }
+  }
+
+  // Wait 1.2s between OpenSky requests (rate limit)
+  setTimeout(() => {
+    liveTraffic.historyBusy = false;
+    processHistoryQueue();
+  }, 1200);
+}
+
+async function fetchLiveTraffic() {
+  if (!liveTraffic.enabled) return;
+  try {
+    const url = `https://api.airplanes.live/v2/point/${liveTraffic.center.lat}/${liveTraffic.center.lon}/${liveTraffic.radius}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!data.ac) return;
+
+    const now = Date.now();
+    const seen = new Set();
+
+    data.ac.forEach(ac => {
+      if (!ac.lat || !ac.lon || !ac.alt_baro || ac.alt_baro === 'ground') return;
+      const hex = ac.hex;
+      seen.add(hex);
+
+      const alt = typeof ac.alt_baro === 'number' ? ac.alt_baro : 0;
+      const pos = { lat: ac.lat, lon: ac.lon, alt: alt, time: now };
+
+      if (!liveTraffic.aircraft[hex]) {
+        liveTraffic.aircraft[hex] = {
+          entity: null,
+          trail: null,
+          positions: [],
+          info: ac,
+          historyLoaded: false
+        };
+        // Queue OpenSky history fetch for new aircraft
+        liveTraffic.historyQueue.push(hex);
+        processHistoryQueue();
+      }
+
+      const craft = liveTraffic.aircraft[hex];
+      craft.info = ac;
+      craft.positions.push(pos);
+
+      // Keep max 1 hour of positions
+      const oneHourAgo = now - 3600000;
+      craft.positions = craft.positions.filter(p => p.time >= oneHourAgo);
+    });
+
+    // Remove stale aircraft (not seen in this poll and last position > 60s old)
+    Object.keys(liveTraffic.aircraft).forEach(hex => {
+      if (!seen.has(hex)) {
+        const craft = liveTraffic.aircraft[hex];
+        const lastPos = craft.positions[craft.positions.length - 1];
+        if (!lastPos || now - lastPos.time > 60000) {
+          if (craft.entity) viewer.entities.remove(craft.entity);
+          if (craft.trail) viewer.entities.remove(craft.trail);
+          delete liveTraffic.aircraft[hex];
+        }
+      }
+    });
+
+    updateTrafficDisplay();
+
+  } catch(e) {
+    console.warn('Live traffic fetch error:', e);
+  }
+}
+
+function updateTrafficDisplay() {
+  const now = Date.now();
+  const isLive = liveTraffic.viewTime === null;
+  const viewT = isLive ? now : liveTraffic.viewTime;
+  let acCount = 0;
+
+  Object.keys(liveTraffic.aircraft).forEach(hex => {
+    const craft = liveTraffic.aircraft[hex];
+    if (craft.positions.length === 0) return;
+
+    // Find the best position at or before viewT
+    let posAtTime = null;
+    let posIdx = -1;
+    for (let i = craft.positions.length - 1; i >= 0; i--) {
+      if (craft.positions[i].time <= viewT) {
+        posAtTime = craft.positions[i];
+        posIdx = i;
+        break;
+      }
+    }
+
+    // If not live, only show aircraft that existed at viewT (within 15s tolerance)
+    if (!isLive && (!posAtTime || viewT - posAtTime.time > 15000)) {
+      if (craft.entity) craft.entity.show = false;
+      if (craft.trail) craft.trail.show = false;
+      return;
+    }
+
+    // If live, use the latest position
+    if (isLive) {
+      posAtTime = craft.positions[craft.positions.length - 1];
+      posIdx = craft.positions.length - 1;
+    }
+
+    if (!posAtTime || !isFinite(posAtTime.lat) || !isFinite(posAtTime.lon) || !isFinite(posAtTime.alt)) {
+      if (craft.entity) craft.entity.show = false;
+      if (craft.trail) craft.trail.show = false;
+      return;
+    }
+
+    // Altitude filter
+    if (posAtTime.alt < liveTraffic.altMin || posAtTime.alt > liveTraffic.altMax) {
+      if (craft.entity) craft.entity.show = false;
+      if (craft.trail) craft.trail.show = false;
+      return;
+    }
+
+    acCount++;
+    const altM = feetToMetersExag(posAtTime.alt);
+    const cartPos = Cesium.Cartesian3.fromDegrees(posAtTime.lon, posAtTime.lat, altM);
+    const callsign = (craft.info.flight || hex).trim();
+    const labelText = `${callsign}\n${posAtTime.alt}'  ${craft.info.gs ? Math.round(craft.info.gs) + 'kt' : ''}`;
+
+    // Update or create aircraft dot
+    if (craft.entity) {
+      craft.entity.position = cartPos;
+      craft.entity.label.text = labelText;
+      craft.entity.show = true;
+    } else {
+      craft.entity = viewer.entities.add({
+        name: `${callsign} (${craft.info.t || 'unknown'})`,
+        position: cartPos,
+        point: {
+          pixelSize: 7,
+          color: Cesium.Color.fromCssColorString('#00cc44'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 1,
+          scaleByDistance: new Cesium.NearFarScalar(5000, 1.2, 200000, 0.5)
+        },
+        label: {
+          text: labelText,
+          font: 'bold 27px monospace',
+          fillColor: Cesium.Color.fromCssColorString('#00cc44'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(12, -4),
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          scaleByDistance: new Cesium.NearFarScalar(5000, 0.8, 150000, 0.2),
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 100000)
+        },
+        description: buildTrafficDescription(craft.info)
+      });
+    }
+
+    // Build trail from positions up to viewT
+    const trailPositions = craft.positions.filter(p =>
+      p.time <= viewT && isFinite(p.lat) && isFinite(p.lon) && isFinite(p.alt)
+    );
+    if (trailPositions.length >= 2) {
+      const trailCarts = trailPositions.map(p =>
+        Cesium.Cartesian3.fromDegrees(p.lon, p.lat, feetToMetersExag(p.alt))
+      );
+      if (craft.trail) {
+        craft.trail.polyline.positions = trailCarts;
+        craft.trail.show = true;
+      } else {
+        craft.trail = viewer.entities.add({
+          name: `${callsign} trail`,
+          polyline: {
+            positions: trailCarts,
+            width: 2,
+            material: Cesium.Color.fromCssColorString('#00cc44').withAlpha(0.4),
+            clampToGround: false
+          }
+        });
+      }
+    } else if (craft.trail) {
+      craft.trail.show = false;
+    }
+  });
+
+  // Update count display
+  const countEl = document.getElementById('traffic-aircraft-count');
+  if (countEl) countEl.textContent = `(${acCount} aircraft)`;
+}
+
+function buildTrafficDescription(ac) {
+  const parts = [`<b>${(ac.flight || ac.hex).trim()}</b>`];
+  if (ac.r) parts.push(`Reg: ${ac.r}`);
+  if (ac.t) parts.push(`Type: ${ac.t}`);
+  if (ac.desc) parts.push(`${ac.desc}`);
+  if (ac.ownOp) parts.push(`Operator: ${ac.ownOp}`);
+  if (ac.alt_baro) parts.push(`Alt: ${ac.alt_baro}'`);
+  if (ac.gs) parts.push(`Speed: ${Math.round(ac.gs)} kt`);
+  if (ac.track !== undefined) parts.push(`Heading: ${Math.round(ac.track)}°`);
+  if (ac.squawk) parts.push(`Squawk: ${ac.squawk}`);
+  if (ac.baro_rate) parts.push(`VS: ${ac.baro_rate > 0 ? '+' : ''}${ac.baro_rate} fpm`);
+  return parts.join('<br>');
+}
+
+function startLiveTraffic() {
+  liveTraffic.enabled = true;
+  liveTraffic.viewTime = null;
+  document.getElementById('traffic-time-control').style.display = 'block';
+  const slider = document.getElementById('traffic-time-slider');
+  slider.value = 1800;
+  document.getElementById('traffic-time-label').textContent = 'Live';
+  fetchLiveTraffic(); // immediate first poll
+  liveTraffic.interval = setInterval(fetchLiveTraffic, liveTraffic.pollRate);
+  console.log('Live traffic started');
+}
+
+function stopLiveTraffic() {
+  liveTraffic.enabled = false;
+  if (liveTraffic.interval) {
+    clearInterval(liveTraffic.interval);
+    liveTraffic.interval = null;
+  }
+  liveTraffic.historyQueue = [];
+  document.getElementById('traffic-time-control').style.display = 'none';
+  // Remove all aircraft entities
+  Object.keys(liveTraffic.aircraft).forEach(hex => {
+    const craft = liveTraffic.aircraft[hex];
+    if (craft.entity) viewer.entities.remove(craft.entity);
+    if (craft.trail) viewer.entities.remove(craft.trail);
+  });
+  liveTraffic.aircraft = {};
+  console.log('Live traffic stopped');
+}
+
+// Time slider for traffic playback
+const trafficSlider = document.getElementById('traffic-time-slider');
+const trafficTimeLabel = document.getElementById('traffic-time-label');
+trafficSlider.addEventListener('input', () => {
+  const val = parseInt(trafficSlider.value);
+  if (val >= 1800) {
+    // Live mode
+    liveTraffic.viewTime = null;
+    trafficTimeLabel.textContent = 'Live';
+  } else {
+    // Historical: val = seconds from start (0 = -30min, 1800 = now)
+    const secsAgo = 1800 - val;
+    liveTraffic.viewTime = Date.now() - secsAgo * 1000;
+    const mins = Math.floor(secsAgo / 60);
+    const secs = secsAgo % 60;
+    trafficTimeLabel.textContent = `-${mins}m ${secs > 0 ? secs + 's' : ''} ago`;
+  }
+  updateTrafficDisplay();
+});
+
+// Altitude filter dual-range slider
+const altMinSlider = document.getElementById('traffic-alt-min');
+const altMaxSlider = document.getElementById('traffic-alt-max');
+const altLabel = document.getElementById('traffic-alt-label');
+
+function formatAlt(ft) {
+  return ft >= 1000 ? (ft/1000).toFixed(ft % 1000 === 0 ? 0 : 1) + 'k' : ft + "'";
+}
+
+function updateAltFilter() {
+  let lo = parseInt(altMinSlider.value);
+  let hi = parseInt(altMaxSlider.value);
+  // Prevent crossing
+  if (lo > hi) {
+    lo = hi;
+    altMinSlider.value = lo;
+  }
+  liveTraffic.altMin = lo;
+  liveTraffic.altMax = hi;
+  altLabel.textContent = `${formatAlt(lo)} – ${formatAlt(hi)}`;
+  updateTrafficDisplay();
+}
+
+altMinSlider.addEventListener('input', updateAltFilter);
+altMaxSlider.addEventListener('input', updateAltFilter);
+
+// ============================================================
+// Data loading
+// ============================================================
+
+let DATA = null;
+const entityGroups = {};  // groupName -> [entities]
+let vertExag = 1;
+let buildGeneration = 0; // incremented on each rebuild to cancel stale async ops
+const terrainCache = {}; // cache terrain heights by airspace name to avoid re-sampling
+
+function feetToMeters(ft) { return ft * 0.3048; }
+function feetToMetersExag(ft) { return ft * 0.3048 * vertExag; }
+
+function getApproachColor(name) {
+  if (name.startsWith('I') || name.startsWith('L')) return Cesium.Color.fromCssColorString('#44ff44');  // ILS/LOC
+  if (name.startsWith('R') || name.startsWith('H')) return Cesium.Color.fromCssColorString('#ff6644');  // RNAV
+  return Cesium.Color.fromCssColorString('#ffcc00');  // VOR/other
+}
+
+function getAirwayColor(type) {
+  if (type === 'V') return Cesium.Color.fromCssColorString('#ffaa00');
+  if (type === 'T') return Cesium.Color.fromCssColorString('#00ccff');
+  if (type === 'J') return Cesium.Color.fromCssColorString('#ff44ff');
+  if (type === 'Q') return Cesium.Color.fromCssColorString('#44ffcc');
+  return Cesium.Color.fromCssColorString('#aaaaaa');
+}
+
+// ============================================================
+// Create airspace cylinders/rings
+// ============================================================
+
+function createAirspaceEntities(airspace) {
+  // BTV field elevation for AGL conversions (~335 ft)
+  const btvElevFt = 335;
+
+  airspace.forEach(as => {
+    const groupName = `airspace_${as.type}`;
+    if (!entityGroups[groupName]) entityGroups[groupName] = [];
+
+    const radiusM = as.radius_nm * 1852;
+
+    // Convert floor/ceiling to meters
+    let floorM, ceilM;
+    let needsTerrainSample = false;
+    const ceilType = as.ceiling_type || 'MSL';
+
+    if (as.floor_type === 'SFC') {
+      floorM = 0;
+    } else if (as.floor_type === 'AGL') {
+      floorM = feetToMetersExag(as.floor);
+      needsTerrainSample = true;
+    } else {
+      floorM = feetToMetersExag(as.floor);
+    }
+
+    if (ceilType === 'AGL') {
+      ceilM = feetToMetersExag(as.ceiling);
+      needsTerrainSample = true;
+    } else {
+      ceilM = feetToMetersExag(as.ceiling);
+    }
+
+    // E-SFC: SFC floor + AGL ceiling → both terrain-relative
+    const ceilIsAGL = (ceilType === 'AGL');
+    const floorIsAGL = (as.floor_type === 'AGL');
+
+    // E-1200 ceiling capped for display (18000 MSL is very tall)
+    if (as.type === 'E-1200') {
+      ceilM = feetToMetersExag(18000);
+    }
+
+    let color;
+    switch(as.type) {
+      case 'C': color = Cesium.Color.fromCssColorString('#4488ff').withAlpha(0.08); break;
+      case 'E-SFC': color = Cesium.Color.fromCssColorString('#884488').withAlpha(0.06); break;
+      case 'E-700': color = Cesium.Color.fromCssColorString('#884488').withAlpha(0.04); break;
+      case 'E-1200': color = Cesium.Color.fromCssColorString('#884488').withAlpha(0.03); break;
+      default: color = Cesium.Color.fromCssColorString('#888888').withAlpha(0.05);
+    }
+
+    let outlineColor;
+    switch(as.type) {
+      case 'C': outlineColor = Cesium.Color.fromCssColorString('#4488ff').withAlpha(0.6); break;
+      default: outlineColor = Cesium.Color.fromCssColorString('#884488').withAlpha(0.4);
+    }
+
+    const ceilLabel = ceilType === 'AGL' ? `${as.ceiling} AGL` : `${as.ceiling} MSL`;
+    const descHtml = `<b>${as.name}</b><br>Floor: ${as.floor} ${as.floor_type}<br>Ceiling: ${ceilLabel}<br>Radius: ${as.radius_nm} nm`;
+
+    let entity;
+    let edgePositions = []; // for drawing clean perimeter lines
+
+    if (as.shape === 'polygon' && as.polygon) {
+      // Build outer positions
+      const polyCoords = [];
+      as.polygon.forEach(pt => { polyCoords.push(pt[1], pt[0]); });
+      const outerPositions = Cesium.Cartesian3.fromDegreesArray(polyCoords);
+
+      // Build hole if present
+      let hierarchy;
+      if (as.hole) {
+        const holeCoords = [];
+        as.hole.forEach(pt => { holeCoords.push(pt[1], pt[0]); });
+        const holePositions = Cesium.Cartesian3.fromDegreesArray(holeCoords);
+        hierarchy = new Cesium.PolygonHierarchy(outerPositions, [
+          new Cesium.PolygonHierarchy(holePositions)
+        ]);
+      } else {
+        hierarchy = new Cesium.PolygonHierarchy(outerPositions);
+      }
+
+      if (needsTerrainSample) {
+        // Terrain-relative floor and/or ceiling
+        const floorOffsetM = floorM;
+        const ceilOffsetM = ceilM;
+        const terrainProv = viewer.scene.terrainProvider;
+        const maxSegDeg = 0.01;
+        const cacheKey = as.name + '_' + (as.polygon ? as.polygon.length : '');
+
+        function densifyRing(pts) {
+          const dense = [];
+          for (let i = 0; i < pts.length; i++) {
+            const a = pts[i], b = pts[(i + 1) % pts.length];
+            dense.push(a);
+            const dlat = b[0] - a[0], dlon = b[1] - a[1];
+            const dist = Math.sqrt(dlat*dlat + dlon*dlon);
+            const nSeg = Math.ceil(dist / maxSegDeg);
+            for (let s = 1; s < nSeg; s++) {
+              const t = s / nSeg;
+              dense.push([a[0] + dlat*t, a[1] + dlon*t]);
+            }
+          }
+          return dense;
+        }
+
+        // Build entities from cached terrain data (lon, lat, height arrays)
+        function buildFromCache(cached) {
+          const outerCarto = cached.outer;
+          const holeCarto = cached.hole;
+
+          const outerFloorPos = outerCarto.map(c =>
+            Cesium.Cartesian3.fromRadians(c.lon, c.lat, c.h + floorOffsetM)
+          );
+          let hierFloor;
+          if (holeCarto) {
+            const holeFloorPos = holeCarto.map(c =>
+              Cesium.Cartesian3.fromRadians(c.lon, c.lat, c.h + floorOffsetM)
+            );
+            hierFloor = new Cesium.PolygonHierarchy(outerFloorPos, [
+              new Cesium.PolygonHierarchy(holeFloorPos)
+            ]);
+          } else {
+            hierFloor = new Cesium.PolygonHierarchy(outerFloorPos);
+          }
+
+          let extHeight;
+          if (ceilIsAGL) {
+            const avgH = outerCarto.reduce((s, c) => s + c.h, 0) / outerCarto.length;
+            extHeight = avgH + ceilOffsetM;
+          } else {
+            extHeight = ceilOffsetM;
+          }
+
+          entityGroups[groupName].push(viewer.entities.add({
+            name: as.name,
+            polygon: { hierarchy: hierFloor, perPositionHeight: true, extrudedHeight: extHeight, material: color, outline: false },
+            description: descHtml
+          }));
+
+          if (ceilIsAGL) {
+            const pts = outerCarto.map(c => Cesium.Cartesian3.fromRadians(c.lon, c.lat, c.h + ceilOffsetM));
+            pts.push(pts[0]);
+            entityGroups[groupName].push(viewer.entities.add({
+              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+            }));
+          } else {
+            const pts = outerCarto.map(c => Cesium.Cartesian3.fromRadians(c.lon, c.lat, extHeight));
+            pts.push(pts[0]);
+            entityGroups[groupName].push(viewer.entities.add({
+              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+            }));
+          }
+
+          if (floorIsAGL || as.floor_type === 'SFC') {
+            const pts = outerFloorPos.slice();
+            pts.push(pts[0]);
+            entityGroups[groupName].push(viewer.entities.add({
+              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+            }));
+          }
+        }
+
+        if (terrainCache[cacheKey]) {
+          // Use cached terrain heights — instant rebuild
+          buildFromCache(terrainCache[cacheKey]);
+        } else {
+          // First load: sample terrain and cache
+          const denseOuter = densifyRing(as.polygon);
+          const denseHole = as.hole ? densifyRing(as.hole) : null;
+          const outerCarto = denseOuter.map(pt => Cesium.Cartographic.fromDegrees(pt[1], pt[0]));
+          const holeCarto = denseHole ? denseHole.map(pt => Cesium.Cartographic.fromDegrees(pt[1], pt[0])) : null;
+          const allCarto = holeCarto ? outerCarto.concat(holeCarto) : outerCarto;
+          const myGen = buildGeneration;
+
+          Cesium.sampleTerrainMostDetailed(terrainProv, allCarto).then(() => {
+            if (myGen !== buildGeneration) return;
+            // Cache the terrain heights (lon/lat in radians + height)
+            const cachedOuter = outerCarto.map(c => ({ lon: c.longitude, lat: c.latitude, h: c.height }));
+            const cachedHole = holeCarto ? holeCarto.map(c => ({ lon: c.longitude, lat: c.latitude, h: c.height })) : null;
+            terrainCache[cacheKey] = { outer: cachedOuter, hole: cachedHole };
+            buildFromCache(terrainCache[cacheKey]);
+          }).catch((err) => {
+            if (myGen !== buildGeneration) return;
+            console.warn('Terrain sampling failed for', as.name, err);
+            const fallbackFloor = as.floor_type === 'SFC' ? 0 : feetToMetersExag(as.floor + btvElevFt);
+            const fallbackCeil = ceilIsAGL ? feetToMetersExag(as.ceiling + btvElevFt) : ceilM;
+            entityGroups[groupName].push(viewer.entities.add({
+              name: as.name,
+              polygon: { hierarchy: hierarchy, height: fallbackFloor, extrudedHeight: fallbackCeil, material: color, outline: false },
+              description: descHtml
+            }));
+          });
+        }
+      } else {
+        // MSL or SFC floor: use flat height
+        entity = viewer.entities.add({
+          name: as.name,
+          polygon: {
+            hierarchy: hierarchy,
+            height: floorM,
+            extrudedHeight: ceilM,
+            material: color,
+            outline: false
+          },
+          description: descHtml
+        });
+        entityGroups[groupName].push(entity);
+      }
+      // Edge positions: outer boundary (skip for terrain-sampled types, edges handled above)
+      if (!needsTerrainSample) {
+        as.polygon.forEach(pt => { edgePositions.push({ lon: pt[1], lat: pt[0] }); });
+      }
+
+
+    } else {
+      // Render as cylinder (AGL approximated with BTV elevation since cylinders lack terrain-relative)
+      const cylFloorM = floorIsAGL ? feetToMetersExag(as.floor + btvElevFt) : floorM;
+      entity = viewer.entities.add({
+        name: as.name,
+        position: Cesium.Cartesian3.fromDegrees(as.center_lon, as.center_lat, (cylFloorM + ceilM) / 2),
+        cylinder: {
+          length: ceilM - cylFloorM,
+          topRadius: radiusM,
+          bottomRadius: radiusM,
+          material: color,
+          outline: false,
+          numberOfVerticalLines: 0,
+          slices: 128
+        },
+        description: descHtml
+      });
+      entityGroups[groupName].push(entity);
+      // Build circle edge positions
+      for (let deg = 0; deg <= 360; deg += 2) {
+        const rad = Cesium.Math.toRadians(deg);
+        const latOff = (as.radius_nm / 60) * Math.cos(rad);
+        const lonOff = (as.radius_nm / 60 / Math.cos(Cesium.Math.toRadians(as.center_lat))) * Math.sin(rad);
+        edgePositions.push({ lon: as.center_lon + lonOff, lat: as.center_lat + latOff });
+      }
+    }
+
+    // Skip automatic edges for Class C (handled manually below)
+    if (as.type !== 'C' && edgePositions.length > 2) {
+      const ceilPts = edgePositions.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, ceilM));
+      ceilPts.push(ceilPts[0]);
+
+      // Ceiling edge
+      entityGroups[groupName].push(viewer.entities.add({
+        polyline: { positions: ceilPts, width: 1, material: outlineColor, clampToGround: false }
+      }));
+
+      // Floor edge: skip for AGL types (floor follows terrain), draw for MSL/SFC
+      if (!floorIsAGL) {
+        const floorPts = edgePositions.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, floorM));
+        floorPts.push(floorPts[0]);
+        entityGroups[groupName].push(viewer.entities.add({
+          polyline: { positions: floorPts, width: 1, material: outlineColor, clampToGround: false }
+        }));
+      }
+
+      // Vertical edges at corners > 20 degrees
+      const n = edgePositions.length;
+      for (let i = 0; i < n; i++) {
+        const prev = edgePositions[(i - 1 + n) % n];
+        const curr = edgePositions[i];
+        const next = edgePositions[(i + 1) % n];
+        const b1 = Math.atan2(curr.lon - prev.lon, curr.lat - prev.lat);
+        const b2 = Math.atan2(next.lon - curr.lon, next.lat - curr.lat);
+        let diff = Math.abs(b2 - b1);
+        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+        if (diff > Cesium.Math.toRadians(40)) {
+          entityGroups[groupName].push(viewer.entities.add({
+            polyline: {
+              positions: [
+                Cesium.Cartesian3.fromDegrees(curr.lon, curr.lat, floorIsAGL ? 0 : floorM),
+                Cesium.Cartesian3.fromDegrees(curr.lon, curr.lat, ceilM)
+              ],
+              width: 1, material: outlineColor, clampToGround: false
+            }
+          }));
+        }
+      }
+    }
+  });
+
+  // --- Manual Class C wedding cake edge lines ---
+  const cGroup = 'airspace_C';
+  if (entityGroups[cGroup]) {
+    const cColor = Cesium.Color.fromCssColorString('#4488ff').withAlpha(0.6);
+    const clat = 44.471861, clon = -73.153278;
+    const cosLat = Math.cos(Cesium.Math.toRadians(clat));
+
+    function circleRing(radiusNm, altM) {
+      const pts = [];
+      for (let deg = 0; deg <= 360; deg += 2) {
+        const rad = Cesium.Math.toRadians(deg);
+        pts.push(Cesium.Cartesian3.fromDegrees(
+          clon + (radiusNm / 60 / cosLat) * Math.sin(rad),
+          clat + (radiusNm / 60) * Math.cos(rad),
+          altM
+        ));
+      }
+      return pts;
+    }
+    function semiRing(radiusNm, altM, startBear, endBear) {
+      const pts = [];
+      for (let deg = startBear; deg <= endBear; deg += 2) {
+        const rad = Cesium.Math.toRadians(deg);
+        pts.push(Cesium.Cartesian3.fromDegrees(
+          clon + (radiusNm / 60 / cosLat) * Math.sin(rad),
+          clat + (radiusNm / 60) * Math.cos(rad),
+          altM
+        ));
+      }
+      return pts;
+    }
+
+    const sfc = 0;
+    const alt1500 = feetToMetersExag(1500);
+    const alt2200 = feetToMetersExag(2200);
+    const alt4400 = feetToMetersExag(4400);
+
+    // --- Class C wedding cake edges (only where sections intersect, no overlap) ---
+
+    // 1. Top: 10nm full circle at 4,400
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: circleRing(10, alt4400), width: 1, material: cColor, clampToGround: false }
+    }));
+    // 2. Bottom: 5nm full circle at SFC
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: circleRing(5, sfc), width: 1, material: cColor, clampToGround: false }
+    }));
+    // 3. West shelf step outer edge: 10nm west semicircle at 1,500
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: semiRing(10, alt1500, 180, 360), width: 1, material: cColor, clampToGround: false }
+    }));
+    // 4. West shelf step inner edge: 5nm west semicircle at 1,500
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: semiRing(5, alt1500, 180, 360), width: 1, material: cColor, clampToGround: false }
+    }));
+    // 5. East shelf step outer edge: 10nm east semicircle at 2,200
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: semiRing(10, alt2200, 0, 180), width: 1, material: cColor, clampToGround: false }
+    }));
+    // 6. East shelf step inner edge: 5nm east semicircle at 2,200
+    entityGroups[cGroup].push(viewer.entities.add({
+      polyline: { positions: semiRing(5, alt2200, 0, 180), width: 1, material: cColor, clampToGround: false }
+    }));
+
+    // 7-8. Vertical edges at 10nm N/S (outer wall corner, 1500 to 4400)
+    const nLon = clon, sLon = clon;
+    const nLat10 = clat + 10/60, sLat10 = clat - 10/60;
+    [[nLon, nLat10], [sLon, sLat10]].forEach(([lon, lat]) => {
+      entityGroups[cGroup].push(viewer.entities.add({
+        polyline: {
+          positions: [
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt1500),
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt4400)
+          ],
+          width: 1, material: cColor, clampToGround: false
+        }
+      }));
+    });
+
+    // 9-10. Vertical edges at 5nm N/S (inner wall corner, 1500 to 2200)
+    const nLat5 = clat + 5/60, sLat5 = clat - 5/60;
+    [[nLon, nLat5], [sLon, sLat5]].forEach(([lon, lat]) => {
+      entityGroups[cGroup].push(viewer.entities.add({
+        polyline: {
+          positions: [
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt1500),
+            Cesium.Cartesian3.fromDegrees(lon, lat, alt2200)
+          ],
+          width: 1, material: cColor, clampToGround: false
+        }
+      }));
+    });
+  }
+}
+
+// ============================================================
+// Create airway polylines
+// ============================================================
+
+function createAirwayEntities(airways) {
+  const halfWidthM = 4 * 1852; // 4nm each side
+
+  // Offset a lat/lon by distance along a bearing
+  function geoOffset(lat, lon, bear, distM) {
+    const R = 6371000, d = distM / R;
+    const latr = Cesium.Math.toRadians(lat);
+    const lonr = Cesium.Math.toRadians(lon);
+    const lat2 = Math.asin(Math.sin(latr) * Math.cos(d) + Math.cos(latr) * Math.sin(d) * Math.cos(bear));
+    const lon2 = lonr + Math.atan2(Math.sin(bear) * Math.sin(d) * Math.cos(latr), Math.cos(d) - Math.sin(latr) * Math.sin(lat2));
+    return [Cesium.Math.toDegrees(lat2), Cesium.Math.toDegrees(lon2)];
+  }
+
+  // Bearing from p1 to p2
+  function getBearing(lat1, lon1, lat2, lon2) {
+    const la1 = Cesium.Math.toRadians(lat1), lo1 = Cesium.Math.toRadians(lon1);
+    const la2 = Cesium.Math.toRadians(lat2), lo2 = Cesium.Math.toRadians(lon2);
+    const dlon = lo2 - lo1;
+    return Math.atan2(
+      Math.sin(dlon) * Math.cos(la2),
+      Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dlon)
+    );
+  }
+
+  airways.forEach(awy => {
+    const groupName = `airway_${awy.id}`;
+    entityGroups[groupName] = [];
+
+    const color = getAirwayColor(awy.type);
+    const fixes = awy.fixes.filter(f => f.lat && f.lon);
+    if (fixes.length < 2) return;
+
+    let defaultFloor, defaultCeiling;
+    if (awy.type === 'J' || awy.type === 'Q') {
+      defaultFloor = 18000; defaultCeiling = 45000;
+    } else {
+      defaultFloor = 1200; defaultCeiling = 17999;
+    }
+
+    // Compute bearings for each segment
+    const bearings = [];
+    for (let i = 0; i < fixes.length - 1; i++) {
+      bearings.push(getBearing(fixes[i].lat, fixes[i].lon, fixes[i+1].lat, fixes[i+1].lon));
+    }
+
+    // Build right and left edge points with mitered joints
+    const rightPts = []; // [{lat, lon}]
+    const leftPts = [];
+    const floors = [];   // per-fix floor in meters
+    const ceils = [];    // per-fix ceiling in meters
+
+    for (let i = 0; i < fixes.length; i++) {
+      const f = fixes[i];
+      const mea = f.min_alt || defaultFloor;
+      const maa = f.max_alt || defaultCeiling;
+      floors.push(feetToMetersExag(mea));
+      ceils.push(feetToMetersExag(maa));
+
+      let perpAngle;
+      if (i === 0) {
+        perpAngle = bearings[0] + Math.PI / 2;
+      } else if (i === fixes.length - 1) {
+        perpAngle = bearings[bearings.length - 1] + Math.PI / 2;
+      } else {
+        // Average the perpendiculars of adjacent segments for a mitered joint
+        const p1 = bearings[i - 1] + Math.PI / 2;
+        const p2 = bearings[i] + Math.PI / 2;
+        // Average angles properly (handle wraparound)
+        let diff = p2 - p1;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        perpAngle = p1 + diff / 2;
+      }
+
+      rightPts.push(geoOffset(f.lat, f.lon, perpAngle, halfWidthM));
+      leftPts.push(geoOffset(f.lat, f.lon, perpAngle + Math.PI, halfWidthM));
+    }
+
+    // Build right-side wall (continuous)
+    const rightWallPos = rightPts.map(p => Cesium.Cartesian3.fromDegrees(p[1], p[0], 0));
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${awy.id} right wall`,
+      wall: {
+        positions: rightWallPos,
+        minimumHeights: floors,
+        maximumHeights: ceils,
+        material: color.withAlpha(0.08),
+        outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+      },
+      description: `<b>Airway ${awy.id}</b><br>Type: ${awy.type}-route<br>Fixes: ${fixes.map(f=>f.fix).join(' → ')}`
+    }));
+
+    // Build left-side wall (continuous)
+    const leftWallPos = leftPts.map(p => Cesium.Cartesian3.fromDegrees(p[1], p[0], 0));
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${awy.id} left wall`,
+      wall: {
+        positions: leftWallPos,
+        minimumHeights: floors,
+        maximumHeights: ceils,
+        material: color.withAlpha(0.08),
+        outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+      },
+      description: `<b>Airway ${awy.id}</b><br>Type: ${awy.type}-route<br>Fixes: ${fixes.map(f=>f.fix).join(' → ')}`
+    }));
+
+    // End caps (first and last cross-walls)
+    const capPairs = [[0, 'start'], [fixes.length - 1, 'end']];
+    capPairs.forEach(([idx, label]) => {
+      const capPos = Cesium.Cartesian3.fromDegreesArrayHeights([
+        rightPts[idx][1], rightPts[idx][0], 0,
+        leftPts[idx][1], leftPts[idx][0], 0
+      ]);
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${awy.id} ${label} cap`,
+        wall: {
+          positions: capPos,
+          minimumHeights: [floors[idx], floors[idx]],
+          maximumHeights: [ceils[idx], ceils[idx]],
+          material: color.withAlpha(0.08),
+          outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+        }
+      }));
+    });
+
+    // Top and bottom polygons for each segment
+    for (let i = 0; i < fixes.length - 1; i++) {
+      const r1 = rightPts[i], l1 = leftPts[i];
+      const r2 = rightPts[i+1], l2 = leftPts[i+1];
+      // Use max floor and min ceiling across the segment for continuous look
+      const segFloor = Math.max(floors[i], floors[i+1]);
+      const segCeil = Math.min(ceils[i], ceils[i+1]);
+
+      // Top polygon
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${awy.id} top ${i}`,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights([
+            r1[1], r1[0], ceils[i],
+            r2[1], r2[0], ceils[i+1],
+            l2[1], l2[0], ceils[i+1],
+            l1[1], l1[0], ceils[i]
+          ]),
+          perPositionHeight: true,
+          material: color.withAlpha(0.06),
+          outline: true, outlineColor: color.withAlpha(0.2), outlineWidth: 1
+        }
+      }));
+
+      // Bottom polygon
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${awy.id} bottom ${i}`,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights([
+            r1[1], r1[0], floors[i],
+            r2[1], r2[0], floors[i+1],
+            l2[1], l2[0], floors[i+1],
+            l1[1], l1[0], floors[i]
+          ]),
+          perPositionHeight: true,
+          material: color.withAlpha(0.06),
+          outline: true, outlineColor: color.withAlpha(0.2), outlineWidth: 1
+        }
+      }));
+    }
+
+    // Centerline
+    const centerPositions = fixes.map(f =>
+      Cesium.Cartesian3.fromDegrees(f.lon, f.lat, feetToMetersExag(f.min_alt || defaultFloor))
+    );
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${awy.id}`,
+      polyline: {
+        positions: centerPositions,
+        width: 2,
+        material: new Cesium.PolylineDashMaterialProperty({ color: color, dashLength: 16 }),
+        clampToGround: false
+      },
+      description: `<b>Airway ${awy.id}</b><br>Type: ${awy.type}-route<br>Fixes: ${fixes.map(f=>f.fix).join(' → ')}`
+    }));
+
+    // Fix labels
+    fixes.forEach(f => {
+      const mea = f.min_alt || defaultFloor;
+      const alt = feetToMetersExag(mea);
+      let labelText = f.fix;
+      if (f.min_alt) labelText += `\nMEA ${f.min_alt}'`;
+      if (f.max_alt) labelText += `\nMAA ${f.max_alt}'`;
+
+      entityGroups[groupName].push(viewer.entities.add({
+        name: f.fix,
+        position: Cesium.Cartesian3.fromDegrees(f.lon, f.lat, alt + 100),
+        label: {
+          text: labelText,
+          font: '30px monospace',
+          fillColor: color,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -12),
+          scaleByDistance: new Cesium.NearFarScalar(5000, 1.0, 150000, 0.3),
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 120000)
+        },
+        point: {
+          pixelSize: 5,
+          color: color,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 1,
+          scaleByDistance: new Cesium.NearFarScalar(5000, 1.0, 100000, 0.4)
+        }
+      }));
+    });
+  });
+}
+
+// ============================================================
+// Create instrument procedure paths
+// ============================================================
+
+function createProcedureEntities(procedures, procType) {
+  const allProcs = procedures[procType] || [];
+
+  allProcs.forEach(proc => {
+    const groupName = `proc_${proc.airport}_${proc.name}`;
+    entityGroups[groupName] = [];
+
+    const color = getApproachColor(proc.name);
+    const allLegs = proc.legs;
+    if (allLegs.length < 2) return;
+
+    const apt = DATA.airports.find(a => a.id === proc.airport);
+    const fieldElev = apt ? apt.elevation : 500;
+
+    function getLegAlt(leg, fallbackLegs, idx) {
+      if (leg.alt1) return feetToMetersExag(leg.alt1);
+      // Look backward for altitude
+      if (idx > 0 && fallbackLegs[idx-1] && fallbackLegs[idx-1].alt1) return feetToMetersExag(fallbackLegs[idx-1].alt1);
+      // Look forward for altitude (handles IAFs at start of transitions)
+      for (let j = idx + 1; j < fallbackLegs.length; j++) {
+        if (fallbackLegs[j].alt1) return feetToMetersExag(fallbackLegs[j].alt1);
+      }
+      return feetToMetersExag(fieldElev + 2000);
+    }
+
+    // Separate legs into transitions (route_type A with transition name) and common segment
+    const transitions = {};  // transition_name -> [legs]
+    const commonLegs = [];   // route_type != A (final approach + missed)
+
+    allLegs.forEach(leg => {
+      if (leg.route_type === 'A' && leg.transition) {
+        if (!transitions[leg.transition]) transitions[leg.transition] = [];
+        transitions[leg.transition].push(leg);
+      } else {
+        // Skip duplicate consecutive fixes with no path_term (ARINC stepdown markers)
+        const prev = commonLegs[commonLegs.length - 1];
+        if (prev && prev.fix === leg.fix && !leg.path_term) return;
+        commonLegs.push(leg);
+      }
+    });
+
+    // Find missed approach point in common legs
+    let mapIdx = -1;
+    for (let i = 0; i < commonLegs.length; i++) {
+      if (commonLegs[i].fix && commonLegs[i].fix.startsWith('RW')) {
+        mapIdx = i;
+        break;
+      }
+    }
+    if (mapIdx < 0) {
+      for (let i = 0; i < commonLegs.length; i++) {
+        if (commonLegs[i].path_term === 'CA') {
+          mapIdx = i > 0 ? i - 1 : 0;
+          break;
+        }
+      }
+    }
+
+    const finalLegs = mapIdx >= 0 ? commonLegs.slice(0, mapIdx + 1) : commonLegs;
+    const missedLegs = mapIdx >= 0 ? commonLegs.slice(mapIdx) : [];
+
+    // Draw each transition as a separate polyline
+    Object.keys(transitions).forEach(tName => {
+      const tLegs = transitions[tName].filter(l => l.lat && l.lon);
+      if (tLegs.length < 2) return;
+      const positions = tLegs.map((l, i) =>
+        Cesium.Cartesian3.fromDegrees(l.lon, l.lat, getLegAlt(l, tLegs, i))
+      );
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} via ${tName}`,
+        polyline: {
+          positions: positions,
+          width: 3,
+          material: color.withAlpha(0.85),
+          clampToGround: false
+        },
+        description: buildProcDescription(proc)
+      }));
+    });
+
+    // Draw final approach segment (solid line)
+    const finalWithPos = finalLegs.filter(l => l.lat && l.lon);
+    if (finalWithPos.length >= 2) {
+      const positions = finalWithPos.map((l, i) =>
+        Cesium.Cartesian3.fromDegrees(l.lon, l.lat, getLegAlt(l, finalWithPos, i))
+      );
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.readable_name} ${proc.name}`,
+        polyline: {
+          positions: positions,
+          width: 3,
+          material: color.withAlpha(0.85),
+          clampToGround: false
+        },
+        description: buildProcDescription(proc)
+      }));
+    }
+
+    // Draw missed approach segment (dashed line)
+    const missedWithPos = missedLegs.filter(l => l.lat && l.lon);
+    if (missedWithPos.length >= 2) {
+      const positions = missedWithPos.map((l, i) =>
+        Cesium.Cartesian3.fromDegrees(l.lon, l.lat, getLegAlt(l, missedWithPos, i))
+      );
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} Missed Approach`,
+        polyline: {
+          positions: missedWithPos.map((l, i) =>
+            Cesium.Cartesian3.fromDegrees(l.lon, l.lat, getLegAlt(l, missedWithPos, i))
+          ),
+          width: 3,
+          material: new Cesium.PolylineDashMaterialProperty({
+            color: color.withAlpha(0.7),
+            dashLength: 12
+          }),
+          clampToGround: false
+        },
+        description: buildProcDescription(proc)
+      }));
+    }
+
+    // Determine which fixes are in the missed approach (for labeling)
+    const missedFixes = new Set();
+    missedLegs.forEach((l, i) => { if (i > 0 && l.fix) missedFixes.add(l.fix); });
+
+    // Add fix labels — deduplicate by fix name (same fix appears in multiple transitions)
+    const labeledFixes = new Set();
+    const allLegsWithPos = allLegs.filter(l => l.lat && l.lon && l.fix);
+    allLegsWithPos.forEach((leg, i) => {
+      if (labeledFixes.has(leg.fix)) return;
+      labeledFixes.add(leg.fix);
+
+      const alt = getLegAlt(leg, allLegsWithPos, i);
+      const isMissed = missedFixes.has(leg.fix);
+
+      let labelText = leg.fix;
+      if (leg.alt1) {
+        const altStr = leg.alt1 >= 18000 ? `FL${Math.round(leg.alt1/100)}` : `${leg.alt1}'`;
+        const desc = leg.alt_desc || '';
+        labelText += `\n${desc}${altStr}`;
+      }
+      if (isMissed) labelText += '\n(missed)';
+
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} - ${leg.fix}`,
+        position: Cesium.Cartesian3.fromDegrees(leg.lon, leg.lat, alt + 50),
+        label: {
+          text: labelText,
+          font: 'bold 36px monospace',
+          fillColor: isMissed ? color.withAlpha(0.6) : color,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(8, -4),
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          scaleByDistance: new Cesium.NearFarScalar(2000, 1.0, 80000, 0.2),
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 60000)
+        },
+        point: {
+          pixelSize: 5,
+          color: isMissed ? color.withAlpha(0.5) : color,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 1,
+          scaleByDistance: new Cesium.NearFarScalar(2000, 1.0, 80000, 0.3)
+        }
+      }));
+
+      // Vertical line from ground to fix altitude
+      if (leg.alt1 && leg.alt1 > fieldElev + 100) {
+        entityGroups[groupName].push(viewer.entities.add({
+          polyline: {
+            positions: [
+              Cesium.Cartesian3.fromDegrees(leg.lon, leg.lat, feetToMetersExag(fieldElev)),
+              Cesium.Cartesian3.fromDegrees(leg.lon, leg.lat, alt)
+            ],
+            width: 1,
+            material: color.withAlpha(0.25),
+            clampToGround: false
+          }
+        }));
+      }
+    });
+  });
+}
+
+function buildProcDescription(proc) {
+  let html = `<b>${proc.airport} - ${proc.readable_name} ${proc.name}</b><br>`;
+  html += `Type: ${proc.type}<br><br>`;
+  html += '<table style="font-size:11px"><tr><th>Fix</th><th>Alt</th><th>Path</th></tr>';
+  proc.legs.forEach(l => {
+    const altStr = l.alt1 ? `${l.alt_desc||''}${l.alt1}'` : '-';
+    html += `<tr><td>${l.fix||'-'}</td><td>${altStr}</td><td>${l.path_term||'-'}</td></tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+// ============================================================
+// Approach Corridor Visualization (lateral/vertical tolerances)
+// ============================================================
+
+function createApproachCorridors(procedures) {
+  const approaches = procedures.approaches || [];
+
+  // Tolerance specs per approach type
+  // halfWidthFAF = half-width at FAF (meters), halfWidthThreshold = at runway threshold
+  // glidepathAngle in degrees, vertTolerance as fraction (e.g. ±0.1 = ±10% of glideslope)
+  const tolerances = {
+    ILS:       { halfWidthFAF: 930, halfWidthThreshold: 107, gpa: 3.0, vertUp: 0.583, vertDn: 0.417, color: '#44ff44', label: 'ILS' },
+    LOC:       { halfWidthFAF: 930, halfWidthThreshold: 107, gpa: null, vertUp: null, vertDn: null, color: '#88ff44', label: 'LOC' },
+    LPV:       { halfWidthFAF: 556, halfWidthThreshold: 40,  gpa: 3.0, vertUp: 0.583, vertDn: 0.417, color: '#ff6644', label: 'LPV' },
+    LNAV_VNAV: { halfWidthFAF: 556, halfWidthThreshold: 556, gpa: 3.0, vertUp: 75,    vertDn: 75,    color: '#ffaa00', label: 'LNAV/VNAV' },
+    LNAV:      { halfWidthFAF: 556, halfWidthThreshold: 556, gpa: null, vertUp: null, vertDn: null, color: '#ff6644', label: 'LNAV' },
+  };
+
+  // Determine approach type from name
+  function getApproachType(name, readable) {
+    if (name.startsWith('I') && !name.startsWith('IL')) return 'ILS';  // I## = ILS
+    if (name.startsWith('L') && !name.startsWith('LP')) return 'LOC';  // L## = LOC
+    if (name.startsWith('R')) return 'LNAV'; // RNAV - default to LNAV (has LPV/VNAV minima too)
+    return null;
+  }
+
+  function geoOffset(lat, lon, bear, distM) {
+    const R = 6371000, d = distM / R;
+    const latr = Cesium.Math.toRadians(lat);
+    const lonr = Cesium.Math.toRadians(lon);
+    const lat2 = Math.asin(Math.sin(latr) * Math.cos(d) + Math.cos(latr) * Math.sin(d) * Math.cos(bear));
+    const lon2 = lonr + Math.atan2(Math.sin(bear) * Math.sin(d) * Math.cos(latr), Math.cos(d) - Math.sin(latr) * Math.sin(lat2));
+    return { lat: Cesium.Math.toDegrees(lat2), lon: Cesium.Math.toDegrees(lon2) };
+  }
+
+  function getBearing(lat1, lon1, lat2, lon2) {
+    const la1 = Cesium.Math.toRadians(lat1), lo1 = Cesium.Math.toRadians(lon1);
+    const la2 = Cesium.Math.toRadians(lat2), lo2 = Cesium.Math.toRadians(lon2);
+    return Math.atan2(
+      Math.sin(lo2 - lo1) * Math.cos(la2),
+      Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(lo2 - lo1)
+    );
+  }
+
+  function distM(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = Cesium.Math.toRadians(lat2 - lat1);
+    const dLon = Cesium.Math.toRadians(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(Cesium.Math.toRadians(lat1)) * Math.cos(Cesium.Math.toRadians(lat2)) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  approaches.forEach(proc => {
+    // Only PBG for now
+    if (proc.airport !== 'KPBG') return;
+
+    const apType = getApproachType(proc.name, proc.readable_name);
+    if (!apType) return;
+    const tol = tolerances[apType];
+    const groupName = `corridor_${proc.airport}_${proc.name}`;
+    entityGroups[groupName] = [];
+
+    const legs = proc.legs;
+    const apt = DATA.airports.find(a => a.id === proc.airport);
+    const fieldElev = apt ? apt.elevation : 234;
+
+    // Find FAF and runway threshold
+    let fafLeg = null, rwLeg = null, fafIdx = -1;
+    for (let i = 0; i < legs.length; i++) {
+      if (legs[i].fix && legs[i].fix.startsWith('RW')) {
+        rwLeg = legs[i];
+        // FAF is the last fix with altitude before the runway
+        for (let j = i - 1; j >= 0; j--) {
+          if (legs[j].lat && legs[j].lon && legs[j].alt1) {
+            fafLeg = legs[j];
+            fafIdx = j;
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    if (!fafLeg || !rwLeg) return;
+
+    const bearing = getBearing(fafLeg.lat, fafLeg.lon, rwLeg.lat, rwLeg.lon);
+    const totalDist = distM(fafLeg.lat, fafLeg.lon, rwLeg.lat, rwLeg.lon);
+    const perpR = bearing + Math.PI / 2;
+    const perpL = bearing - Math.PI / 2;
+
+    const fafAlt = fafLeg.alt1;
+    const rwAlt = rwLeg.alt1 || fieldElev;
+    const color = Cesium.Color.fromCssColorString(tol.color);
+
+    // Build corridor with N intermediate steps for smooth funnel
+    const steps = 20;
+    const rightEdge = [];   // [{lat, lon, altCenter, altTop, altBot}]
+    const leftEdge = [];
+    const centerLine = [];
+
+    for (let s = 0; s <= steps; s++) {
+      const frac = s / steps;  // 0 = FAF, 1 = threshold
+
+      // Interpolate position along approach course
+      const pt = geoOffset(fafLeg.lat, fafLeg.lon, bearing, totalDist * frac);
+
+      // Interpolate altitude (linear descent)
+      const alt = fafAlt + (rwAlt - fafAlt) * frac;
+      const altM = feetToMetersExag(alt);
+
+      // Interpolate half-width (narrows from FAF to threshold)
+      const hw = tol.halfWidthFAF + (tol.halfWidthThreshold - tol.halfWidthFAF) * frac;
+
+      const rPt = geoOffset(pt.lat, pt.lon, perpR, hw);
+      const lPt = geoOffset(pt.lat, pt.lon, perpL, hw);
+
+      // Vertical tolerance
+      let altTop, altBot;
+      if (tol.gpa && tol.vertUp !== null) {
+        if (tol.vertUp < 10) {
+          // Fractional glideslope tolerance (ILS/LPV style)
+          // Full scale deflection angles above/below glidepath
+          const distFromRW = totalDist * (1 - frac);
+          const nominalAGL = (alt - rwAlt);
+          // Upper: glidepath + 0.583° above = ~20% higher
+          // Lower: glidepath - 0.417° below = ~14% lower
+          const upperAngle = tol.gpa + tol.vertUp;
+          const lowerAngle = tol.gpa - tol.vertDn;
+          altTop = rwAlt + (distFromRW * Math.tan(Cesium.Math.toRadians(upperAngle)));
+          altBot = rwAlt + (distFromRW * Math.tan(Cesium.Math.toRadians(lowerAngle)));
+        } else {
+          // Fixed vertical tolerance in feet (LNAV/VNAV)
+          altTop = alt + tol.vertUp;
+          altBot = alt - tol.vertDn;
+        }
+      } else {
+        // No vertical guidance — show just the MDA step-down plane
+        altTop = alt + 100;
+        altBot = alt - 50;
+      }
+
+      const altTopM = feetToMetersExag(altTop);
+      const altBotM = feetToMetersExag(altBot);
+
+      rightEdge.push({ lat: rPt.lat, lon: rPt.lon, altM, altTopM, altBotM });
+      leftEdge.push({ lat: lPt.lat, lon: lPt.lon, altM, altTopM, altBotM });
+      centerLine.push({ lat: pt.lat, lon: pt.lon, altM, altTopM, altBotM });
+    }
+
+    // Right wall
+    const rWallPos = rightEdge.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0));
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${proc.airport} ${proc.name} corridor R`,
+      wall: {
+        positions: rWallPos,
+        minimumHeights: rightEdge.map(p => p.altBotM),
+        maximumHeights: rightEdge.map(p => p.altTopM),
+        material: color.withAlpha(0.08),
+        outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+      }
+    }));
+
+    // Left wall
+    const lWallPos = leftEdge.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0));
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${proc.airport} ${proc.name} corridor L`,
+      wall: {
+        positions: lWallPos,
+        minimumHeights: leftEdge.map(p => p.altBotM),
+        maximumHeights: leftEdge.map(p => p.altTopM),
+        material: color.withAlpha(0.08),
+        outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+      }
+    }));
+
+    // Top surface (segments)
+    for (let s = 0; s < steps; s++) {
+      const r1 = rightEdge[s], r2 = rightEdge[s+1];
+      const l1 = leftEdge[s], l2 = leftEdge[s+1];
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} top ${s}`,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights([
+            r1.lon, r1.lat, r1.altTopM,
+            r2.lon, r2.lat, r2.altTopM,
+            l2.lon, l2.lat, l2.altTopM,
+            l1.lon, l1.lat, l1.altTopM
+          ]),
+          perPositionHeight: true,
+          material: color.withAlpha(0.05),
+          outline: false
+        }
+      }));
+
+      // Bottom surface
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} bot ${s}`,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArrayHeights([
+            r1.lon, r1.lat, r1.altBotM,
+            r2.lon, r2.lat, r2.altBotM,
+            l2.lon, l2.lat, l2.altBotM,
+            l1.lon, l1.lat, l1.altBotM
+          ]),
+          perPositionHeight: true,
+          material: color.withAlpha(0.05),
+          outline: false
+        }
+      }));
+    }
+
+    // End caps (FAF and threshold)
+    [[0, 'FAF'], [steps, 'THR']].forEach(([idx, lbl]) => {
+      const r = rightEdge[idx], l = leftEdge[idx];
+      entityGroups[groupName].push(viewer.entities.add({
+        name: `${proc.airport} ${proc.name} ${lbl} cap`,
+        wall: {
+          positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+            r.lon, r.lat, 0, l.lon, l.lat, 0
+          ]),
+          minimumHeights: [r.altBotM, l.altBotM],
+          maximumHeights: [r.altTopM, l.altTopM],
+          material: color.withAlpha(0.08),
+          outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+        }
+      }));
+    });
+
+    // Centerline glidepath
+    const gpPositions = centerLine.map(p =>
+      Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.altM)
+    );
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${proc.airport} ${proc.name} glidepath`,
+      polyline: {
+        positions: gpPositions,
+        width: 2,
+        material: new Cesium.PolylineDashMaterialProperty({ color: color.withAlpha(0.7), dashLength: 10 }),
+        clampToGround: false
+      },
+      description: `<b>${proc.airport} ${proc.readable_name} ${proc.name}</b><br>Type: ${tol.label}<br>FAF: ${fafLeg.fix} at ${fafAlt}'<br>GPA: ${tol.gpa || 'N/A'}°<br>Lateral: ${tol.halfWidthFAF}m → ${tol.halfWidthThreshold}m`
+    }));
+
+    // Label at FAF
+    entityGroups[groupName].push(viewer.entities.add({
+      name: `${proc.airport} ${proc.name} corridor label`,
+      position: Cesium.Cartesian3.fromDegrees(centerLine[0].lon, centerLine[0].lat, centerLine[0].altTopM + 80),
+      label: {
+        text: `${tol.label} Corridor`,
+        font: 'bold 24px monospace',
+        fillColor: color,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -10),
+        scaleByDistance: new Cesium.NearFarScalar(3000, 0.8, 80000, 0.2),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 60000)
+      }
+    }));
+  });
+}
+
+// ============================================================
+// Create airport markers
+// ============================================================
+
+function createAirportEntities(airports) {
+  entityGroups['airports'] = [];
+  airports.forEach(apt => {
+    const hasApproaches = DATA.procedures.approaches.some(p => p.airport === apt.id);
+    const color = hasApproaches ? Cesium.Color.CYAN : Cesium.Color.fromCssColorString('#888888');
+    const size = hasApproaches ? 8 : 4;
+
+    const entity = viewer.entities.add({
+      name: apt.id,
+      position: Cesium.Cartesian3.fromDegrees(apt.lon, apt.lat, feetToMeters(apt.elevation) + 20),
+      billboard: hasApproaches ? undefined : undefined,
+      point: {
+        pixelSize: size,
+        color: color,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+        scaleByDistance: new Cesium.NearFarScalar(5000, 1.2, 200000, 0.4),
+        heightReference: Cesium.HeightReference.NONE
+      },
+      label: {
+        text: `${apt.id}\n${apt.elevation}'`,
+        font: hasApproaches ? 'bold 24px sans-serif' : '20px sans-serif',
+        fillColor: color,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+        scaleByDistance: new Cesium.NearFarScalar(5000, 1.0, 200000, 0.3),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, hasApproaches ? 200000 : 60000)
+      },
+      description: `<b>${apt.id} - ${apt.name}</b><br>Elevation: ${apt.elevation} ft<br>Distance from KBTV: ${apt.distance_nm} nm`
+    });
+    entityGroups['airports'].push(entity);
+  });
+}
+
+// ============================================================
+// Create navaid markers
+// ============================================================
+
+// --- SVG symbol generators for aviation chart symbols ---
+function svgToDataUri(svg) {
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+// VOR / VOR-DME / VORTAC: hexagonal compass rose
+function makeVorSvg(type) {
+  const size = 32, cx = 16, cy = 16, r = 12;
+  // Hexagon points
+  let pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 6 + i * Math.PI / 3;
+    pts.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`);
+  }
+  let extra = '';
+  if (type === 'VOR-DME') {
+    // Small rectangle for DME
+    extra = `<rect x="11" y="11" width="10" height="10" fill="none" stroke="#007744" stroke-width="1.5"/>`;
+  } else if (type === 'VORTAC') {
+    // Three tick marks for TACAN
+    extra = `<line x1="16" y1="4" x2="16" y2="0" stroke="#007744" stroke-width="2"/>
+             <line x1="5.6" y1="22" x2="2.1" y2="24" stroke="#007744" stroke-width="2"/>
+             <line x1="26.4" y1="22" x2="29.9" y2="24" stroke="#007744" stroke-width="2"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+    <polygon points="${pts.join(' ')}" fill="none" stroke="#007744" stroke-width="2"/>
+    <circle cx="${cx}" cy="${cy}" r="2" fill="#007744"/>
+    ${extra}
+  </svg>`;
+}
+
+// NDB: circle with dots
+function makeNdbSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
+    <circle cx="12" cy="12" r="6" fill="none" stroke="#996600" stroke-width="2"/>
+    <circle cx="12" cy="12" r="2" fill="#996600"/>
+    <circle cx="12" cy="3" r="1.5" fill="#996600"/>
+    <circle cx="12" cy="21" r="1.5" fill="#996600"/>
+    <circle cx="3" cy="12" r="1.5" fill="#996600"/>
+    <circle cx="21" cy="12" r="1.5" fill="#996600"/>
+  </svg>`;
+}
+
+// RNAV waypoint: four-pointed star
+function makeRnavSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+    <polygon points="8,0 10,6 16,8 10,10 8,16 6,10 0,8 6,6" fill="none" stroke="#0066aa" stroke-width="1.5"/>
+  </svg>`;
+}
+
+// Compulsory reporting point: solid triangle
+function makeCompulsorySvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+    <polygon points="7,1 13,13 1,13" fill="#333333" stroke="#333333" stroke-width="1"/>
+  </svg>`;
+}
+
+// Non-compulsory reporting point: hollow triangle
+function makeNonCompulsorySvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+    <polygon points="7,1 13,13 1,13" fill="none" stroke="#333333" stroke-width="1.5"/>
+  </svg>`;
+}
+
+// Generic fix: small hollow triangle
+function makeFixSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12">
+    <polygon points="6,1 11,11 1,11" fill="none" stroke="#666666" stroke-width="1.2"/>
+  </svg>`;
+}
+
+// DME: small square
+function makeDmeSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+    <rect x="2" y="2" width="10" height="10" fill="none" stroke="#007744" stroke-width="1.5"/>
+    <circle cx="7" cy="7" r="1.5" fill="#007744"/>
+  </svg>`;
+}
+
+// TACAN: triangle with center dot
+function makeTacanSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+    <polygon points="8,1 15,15 1,15" fill="none" stroke="#007744" stroke-width="1.5"/>
+    <circle cx="8" cy="10" r="2" fill="#007744"/>
+  </svg>`;
+}
+
+// Cache billboard images
+const symbolImages = {};
+function getSymbolImage(type) {
+  if (!symbolImages[type]) {
+    switch(type) {
+      case 'VOR':         symbolImages[type] = svgToDataUri(makeVorSvg('VOR')); break;
+      case 'VOR-DME':     symbolImages[type] = svgToDataUri(makeVorSvg('VOR-DME')); break;
+      case 'VORTAC':      symbolImages[type] = svgToDataUri(makeVorSvg('VORTAC')); break;
+      case 'DME':         symbolImages[type] = svgToDataUri(makeDmeSvg()); break;
+      case 'TACAN':       symbolImages[type] = svgToDataUri(makeTacanSvg()); break;
+      case 'NDB':         symbolImages[type] = svgToDataUri(makeNdbSvg()); break;
+      case 'RNAV':        symbolImages[type] = svgToDataUri(makeRnavSvg()); break;
+      case 'REP-COMPULSORY':     symbolImages[type] = svgToDataUri(makeCompulsorySvg()); break;
+      case 'REP-NONCOMPULSORY':  symbolImages[type] = svgToDataUri(makeNonCompulsorySvg()); break;
+      default:            symbolImages[type] = svgToDataUri(makeFixSvg()); break;
+    }
+  }
+  return symbolImages[type];
+}
+
+function getNavaidLabelColor(type) {
+  if (type === 'NDB') return Cesium.Color.fromCssColorString('#996600');
+  return Cesium.Color.fromCssColorString('#007744');
+}
+
+function createNavaidEntities(navaids) {
+  // Group navaids by type for toggling
+  navaids.forEach(nav => {
+    const groupName = `navaid_${nav.type}`;
+    if (!entityGroups[groupName]) entityGroups[groupName] = [];
+
+    const labelColor = getNavaidLabelColor(nav.type);
+    const entity = viewer.entities.add({
+      name: `${nav.id} ${nav.type}`,
+      position: Cesium.Cartesian3.fromDegrees(nav.lon, nav.lat, feetToMeters(500)),
+      billboard: {
+        image: getSymbolImage(nav.type),
+        scaleByDistance: new Cesium.NearFarScalar(5000, 1.2, 150000, 0.5),
+        heightReference: Cesium.HeightReference.NONE
+      },
+      label: {
+        text: `${nav.id}\n${nav.freq}`,
+        font: 'bold 33px monospace',
+        fillColor: labelColor,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(18, 0),
+        horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+        scaleByDistance: new Cesium.NearFarScalar(5000, 1.0, 150000, 0.4),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 150000)
+      },
+      description: `<b>${nav.id} ${nav.type}</b><br>${nav.name}<br>Freq: ${nav.freq}`
+    });
+    entityGroups[groupName].push(entity);
+  });
+}
+
+// ============================================================
+// Create waypoint markers with proper symbols
+// ============================================================
+
+function createWaypointEntities(waypoints) {
+  waypoints.forEach(wp => {
+    const wpType = wp.type || 'FIX';
+    const groupName = `waypoint_${wpType}`;
+    if (!entityGroups[groupName]) entityGroups[groupName] = [];
+
+    let labelColor;
+    switch(wpType) {
+      case 'RNAV': labelColor = Cesium.Color.fromCssColorString('#0066aa'); break;
+      case 'REP-COMPULSORY': labelColor = Cesium.Color.fromCssColorString('#333333'); break;
+      case 'REP-NONCOMPULSORY': labelColor = Cesium.Color.fromCssColorString('#555555'); break;
+      default: labelColor = Cesium.Color.fromCssColorString('#666666');
+    }
+
+    const entity = viewer.entities.add({
+      name: `${wp.id} (${wpType})`,
+      position: Cesium.Cartesian3.fromDegrees(wp.lon, wp.lat, feetToMetersExag(8000)),
+      billboard: {
+        image: getSymbolImage(wpType),
+        scaleByDistance: new Cesium.NearFarScalar(5000, 1.0, 200000, 0.3),
+        heightReference: Cesium.HeightReference.NONE,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 200000)
+      },
+      label: {
+        text: wp.id,
+        font: '27px monospace',
+        fillColor: labelColor,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(10, -2),
+        horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+        scaleByDistance: new Cesium.NearFarScalar(5000, 0.9, 200000, 0.2),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 150000)
+      }
+    });
+    entityGroups[groupName].push(entity);
+  });
+}
+
+// ============================================================
+// (Range ring removed)
+
+// ============================================================
+// UI: Layer control panel
+// ============================================================
+
+function toggleGroup(groupName, visible) {
+  const entities = entityGroups[groupName] || [];
+  entities.forEach(e => { e.show = visible; });
+}
+
+// Track individual checkbox "desired" states separately from visibility
+// so master toggles can remember which children were on/off
+const individualStates = {};
+// Stores the "before master off" state so toggling a section off/on restores children
+const preMasterStates = {};
+
+// Load saved toggle states from localStorage
+function loadToggleStates() {
+  try {
+    const saved = localStorage.getItem('btvToggleStates');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.keys(parsed).forEach(k => { individualStates[k] = parsed[k]; });
+    }
+    const savedPre = localStorage.getItem('btvPreMasterStates');
+    if (savedPre) {
+      const parsed = JSON.parse(savedPre);
+      Object.keys(parsed).forEach(k => { preMasterStates[k] = parsed[k]; });
+    }
+  } catch(e) {}
+}
+function saveToggleStates() {
+  try {
+    localStorage.setItem('btvToggleStates', JSON.stringify(individualStates));
+    localStorage.setItem('btvPreMasterStates', JSON.stringify(preMasterStates));
+  } catch(e) {}
+}
+loadToggleStates();
+
+function buildLayerPanel() {
+  // Clear existing panel content for rebuild
+  ['airspace-layers','airways-layers','approaches-layers','airports-layers',
+   'navaid-layers','waypoint-layers','other-layers','traffic-layers'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+
+  // --- Airspace section ---
+  const airspaceDiv = document.getElementById('airspace-layers');
+  const airspaceTypes = [
+    { key: 'airspace_C', label: 'Class C (Burlington)', color: '#4488ff', on: true },
+    { key: 'airspace_E-SFC', label: 'Class E Surface', color: '#884488', on: true },
+    { key: 'airspace_E-700', label: 'Class E 700ft AGL', color: '#884488', on: true },
+    { key: 'airspace_E-1200', label: 'Class E 1200ft AGL', color: '#884488', on: true },
+  ];
+  const classEKeys = ['airspace_E-SFC', 'airspace_E-700', 'airspace_E-1200'];
+
+  // Class E master toggle
+  const hasAnyE = classEKeys.some(k => entityGroups[k]);
+  if (hasAnyE) {
+    const eMaster = document.createElement('div');
+    eMaster.className = 'layer-toggle';
+    const eCb = document.createElement('input');
+    eCb.type = 'checkbox';
+    eCb.checked = true;
+    eCb.id = 'toggle_classE_master';
+    const eSwatch = document.createElement('span');
+    eSwatch.className = 'swatch';
+    eSwatch.style.backgroundColor = '#884488';
+    const eLbl = document.createElement('label');
+    eLbl.htmlFor = eCb.id;
+    eLbl.textContent = 'Class E (All)';
+    eLbl.style.fontWeight = 'bold';
+    eMaster.appendChild(eCb);
+    eMaster.appendChild(eSwatch);
+    eMaster.appendChild(eLbl);
+    airspaceDiv.appendChild(eMaster);
+
+    eCb.addEventListener('change', () => {
+      classEKeys.forEach(k => {
+        const childCb = document.getElementById(`toggle_${k}`);
+        if (!childCb) return;
+        if (eCb.checked) {
+          const desired = preMasterStates[childCb.id];
+          childCb.checked = desired !== undefined ? desired : true;
+        } else {
+          preMasterStates[childCb.id] = childCb.checked;
+          childCb.checked = false;
+        }
+        individualStates[childCb.id] = childCb.checked;
+        toggleGroup(k, childCb.checked);
+      });
+      saveToggleStates();
+    });
+  }
+
+  airspaceTypes.forEach(as => {
+    if (entityGroups[as.key]) {
+      airspaceDiv.appendChild(createToggle(as.key, as.label, as.color, as.on));
+    }
+  });
+
+  // --- Airways section ---
+  const airwaysDiv = document.getElementById('airways-layers');
+  const awyKeys = Object.keys(entityGroups).filter(k => k.startsWith('airway_')).sort();
+  awyKeys.forEach(key => {
+    const id = key.replace('airway_', '');
+    const awy = DATA.airways.find(a => a.id === id);
+    const color = awy ? getAirwayColor(awy.type).toCssColorString() : '#aaa';
+    airwaysDiv.appendChild(createToggle(key, id, color, true));
+  });
+
+  // --- Approaches grouped by airport ---
+  const approachesDiv = document.getElementById('approaches-layers');
+  const aptGroups = {};
+  Object.keys(entityGroups).filter(k => k.startsWith('proc_')).sort().forEach(key => {
+    const parts = key.replace('proc_', '').split('_');
+    const apt = parts[0];
+    if (!aptGroups[apt]) aptGroups[apt] = [];
+    aptGroups[apt].push(key);
+  });
+
+  Object.keys(aptGroups).sort().forEach(apt => {
+    const group = document.createElement('div');
+    group.className = 'layer-group';
+
+    const header = document.createElement('div');
+    header.className = 'group-header';
+
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'collapse-btn';
+    collapseBtn.textContent = '\u25BC';
+
+    const aptCheckbox = document.createElement('input');
+    aptCheckbox.type = 'checkbox';
+    aptCheckbox.checked = false;
+
+    const aptLabel = document.createElement('span');
+    aptLabel.textContent = apt;
+
+    header.appendChild(collapseBtn);
+    header.appendChild(aptCheckbox);
+    header.appendChild(aptLabel);
+
+    const subDiv = document.createElement('div');
+    subDiv.className = 'sub-layers';
+    subDiv.style.display = 'none';
+
+    aptGroups[apt].forEach(key => {
+      const procName = key.replace(`proc_${apt}_`, '');
+      const proc = DATA.procedures.approaches.find(p => p.airport === apt && p.name === procName);
+      const label = proc ? `${proc.readable_name} ${procName}` : procName;
+      const color = getApproachColor(procName).toCssColorString();
+      subDiv.appendChild(createToggle(key, label, color, false));
+      // Add corridor toggle if one exists for this approach
+      const corrKey = `corridor_${apt}_${procName}`;
+      if (entityGroups[corrKey]) {
+        subDiv.appendChild(createToggle(corrKey, `  ↳ ${label} Corridor`, color, false));
+      }
+    });
+
+    aptCheckbox.addEventListener('change', () => {
+      const checked = aptCheckbox.checked;
+      subDiv.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.checked = checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+
+    collapseBtn.addEventListener('click', () => {
+      const visible = subDiv.style.display !== 'none';
+      subDiv.style.display = visible ? 'none' : 'block';
+      collapseBtn.textContent = visible ? '\u25BC' : '\u25B2';
+    });
+
+    group.appendChild(header);
+    group.appendChild(subDiv);
+    approachesDiv.appendChild(group);
+  });
+
+  // --- Airports section ---
+  const airportsDiv = document.getElementById('airports-layers');
+  airportsDiv.appendChild(createToggle('airports', 'All Airports', '#00cccc', true));
+
+  // --- Navaids section ---
+  const navaidDiv = document.getElementById('navaid-layers');
+  const navaidTypes = [
+    { key: 'navaid_VOR', label: 'VOR', color: '#007744' },
+    { key: 'navaid_VOR-DME', label: 'VOR-DME', color: '#007744' },
+    { key: 'navaid_VORTAC', label: 'VORTAC', color: '#007744' },
+    { key: 'navaid_TACAN', label: 'TACAN', color: '#007744' },
+    { key: 'navaid_DME', label: 'DME', color: '#007744' },
+    { key: 'navaid_NDB', label: 'NDB', color: '#996600' },
+  ];
+  navaidTypes.forEach(nt => {
+    if (entityGroups[nt.key] && entityGroups[nt.key].length > 0) {
+      navaidDiv.appendChild(createToggle(nt.key, nt.label, nt.color, true));
+    }
+  });
+
+  // --- Waypoints section ---
+  const waypointDiv = document.getElementById('waypoint-layers');
+  const wpTypes = [
+    { key: 'waypoint_RNAV', label: 'RNAV Waypoints', color: '#0066aa', on: false },
+    { key: 'waypoint_REP-COMPULSORY', label: 'Compulsory Reporting Pts', color: '#333333', on: false },
+    { key: 'waypoint_REP-NONCOMPULSORY', label: 'Non-Compulsory Reporting Pts', color: '#666666', on: false },
+    { key: 'waypoint_FIX', label: 'Other Fixes', color: '#888888', on: false },
+  ];
+  wpTypes.forEach(wt => {
+    if (entityGroups[wt.key] && entityGroups[wt.key].length > 0) {
+      waypointDiv.appendChild(createToggle(wt.key, wt.label, wt.color, wt.on));
+    }
+  });
+
+  // --- Charts section (VFR/IFR in panel) ---
+  const otherDiv = document.getElementById('other-layers');
+  otherDiv.appendChild(createChartToggle('vfr_sectional', 'VFR Sectional', '#558844'));
+  otherDiv.appendChild(createChartToggle('ifr_low', 'IFR Low Enroute', '#445588'));
+
+  // --- Live Traffic toggle ---
+  const trafficDiv = document.getElementById('traffic-layers');
+  const trafficToggle = document.createElement('div');
+  trafficToggle.className = 'layer-toggle';
+  const trafficCb = document.createElement('input');
+  trafficCb.type = 'checkbox';
+  const savedTraffic = individualStates['toggle_live_traffic'];
+  trafficCb.checked = savedTraffic === true;
+  trafficCb.id = 'toggle_live_traffic';
+  const trafficSwatch = document.createElement('span');
+  trafficSwatch.className = 'swatch';
+  trafficSwatch.style.backgroundColor = '#00cc44';
+  const trafficLbl = document.createElement('label');
+  trafficLbl.htmlFor = trafficCb.id;
+  trafficLbl.textContent = 'Live Traffic (ADS-B)';
+  trafficToggle.appendChild(trafficCb);
+  trafficToggle.appendChild(trafficSwatch);
+  trafficToggle.appendChild(trafficLbl);
+  trafficDiv.appendChild(trafficToggle);
+
+  trafficCb.addEventListener('change', () => {
+    individualStates[trafficCb.id] = trafficCb.checked;
+    saveToggleStates();
+    if (trafficCb.checked) {
+      startLiveTraffic();
+    } else {
+      stopLiveTraffic();
+    }
+  });
+
+  // Auto-start if saved as enabled
+  if (trafficCb.checked) startLiveTraffic();
+
+  // --- Wire up master section toggles ---
+  document.querySelectorAll('.section-master-toggle').forEach(master => {
+    const sectionBody = document.querySelector(`.section-body[data-master="${master.id}"]`);
+    if (!sectionBody) return;
+
+    master.addEventListener('change', () => {
+      // Only target leaf toggles (with toggle_ IDs) — skip airport group checkboxes
+      const leafCbs = sectionBody.querySelectorAll('input[type=checkbox][id^="toggle_"]');
+      if (master.checked) {
+        // Restore each child to its pre-master-off state
+        leafCbs.forEach(cb => {
+          const desired = preMasterStates[cb.id];
+          cb.checked = desired !== undefined ? desired : true;
+          individualStates[cb.id] = cb.checked;
+          // Charts use toggleChartLayer, entities use toggleGroup
+          if (cb.id.startsWith('toggle_chart_')) {
+            toggleChartLayer(cb.id.replace('toggle_chart_', ''), cb.checked);
+          } else {
+            toggleGroup(cb.id.replace('toggle_', ''), cb.checked);
+          }
+        });
+      } else {
+        // Snapshot each child's current state before hiding all
+        leafCbs.forEach(cb => {
+          preMasterStates[cb.id] = cb.checked;
+          cb.checked = false;
+          individualStates[cb.id] = false;
+          if (cb.id.startsWith('toggle_chart_')) {
+            toggleChartLayer(cb.id.replace('toggle_chart_', ''), false);
+          } else {
+            toggleGroup(cb.id.replace('toggle_', ''), false);
+          }
+        });
+      }
+      individualStates[master.id] = master.checked;
+      saveToggleStates();
+    });
+
+    // Restore master state from saved
+    const savedMaster = individualStates[master.id];
+    if (savedMaster !== undefined) master.checked = savedMaster;
+
+    // Initialize: if master is unchecked, hide all children but preserve their pre-master states
+    if (!master.checked) {
+      const leafCbs = sectionBody.querySelectorAll('input[type=checkbox][id^="toggle_"]');
+      leafCbs.forEach(cb => {
+        if (preMasterStates[cb.id] === undefined) {
+          preMasterStates[cb.id] = cb.checked;
+        }
+        cb.checked = false;
+        individualStates[cb.id] = false;
+        if (cb.id.startsWith('toggle_chart_')) {
+          toggleChartLayer(cb.id.replace('toggle_chart_', ''), false);
+        } else {
+          toggleGroup(cb.id.replace('toggle_', ''), false);
+        }
+      });
+    }
+  });
+}
+
+function createToggle(groupKey, label, color, defaultOn) {
+  const div = document.createElement('div');
+  div.className = 'layer-toggle';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  const savedState = individualStates[`toggle_${groupKey}`];
+  cb.checked = savedState !== undefined ? savedState : defaultOn;
+  cb.id = `toggle_${groupKey}`;
+
+  const swatch = document.createElement('span');
+  swatch.className = 'swatch';
+  swatch.style.backgroundColor = color;
+
+  const lbl = document.createElement('label');
+  lbl.htmlFor = cb.id;
+  lbl.textContent = label;
+
+  div.appendChild(cb);
+  div.appendChild(swatch);
+  div.appendChild(lbl);
+
+  // Set initial visibility
+  toggleGroup(groupKey, cb.checked);
+
+  cb.addEventListener('change', () => {
+    individualStates[cb.id] = cb.checked;
+    toggleGroup(groupKey, cb.checked);
+    saveToggleStates();
+  });
+
+  return div;
+}
+
+function createChartToggle(layerKey, label, color) {
+  const div = document.createElement('div');
+  div.className = 'layer-toggle';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  const savedChart = individualStates[`toggle_chart_${layerKey}`];
+  cb.checked = savedChart !== undefined ? savedChart : false;
+  cb.id = `toggle_chart_${layerKey}`;
+
+  const swatch = document.createElement('span');
+  swatch.className = 'swatch';
+  swatch.style.backgroundColor = color;
+
+  const lbl = document.createElement('label');
+  lbl.htmlFor = cb.id;
+  lbl.textContent = label;
+
+  div.appendChild(cb);
+  div.appendChild(swatch);
+  div.appendChild(lbl);
+
+  cb.addEventListener('change', () => {
+    individualStates[cb.id] = cb.checked;
+    // When enabling one chart, disable the other (radio-style)
+    if (cb.checked) {
+      Object.keys(chartLayers).forEach(k => {
+        if (k !== layerKey) {
+          chartLayers[k].show = false;
+          const otherCb = document.getElementById(`toggle_chart_${k}`);
+          if (otherCb) {
+            otherCb.checked = false;
+            individualStates[otherCb.id] = false;
+          }
+        }
+      });
+    }
+    toggleChartLayer(layerKey, cb.checked);
+    saveToggleStates();
+  });
+
+  // Apply saved state on creation
+  if (cb.checked && chartLayers[layerKey]) {
+    toggleChartLayer(layerKey, true);
+  }
+
+  return div;
+}
+
+// ============================================================
+// Entity click handler for info
+// ============================================================
+
+// --- Token application for terrain ---
+async function applyToken() {
+  const token = document.getElementById('cesium-token').value.trim();
+  if (!token) return;
+  const status = document.getElementById('terrain-status');
+  status.textContent = 'Loading terrain...';
+  try {
+    Cesium.Ion.defaultAccessToken = token;
+    viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
+    status.textContent = 'Terrain loaded successfully!';
+    status.style.color = '#2a2';
+    // Save token for next time
+    try { localStorage.setItem('cesiumIonToken', token); } catch(e) {}
+  } catch(e) {
+    status.textContent = 'Token failed: ' + e.message;
+    status.style.color = '#c22';
+  }
+}
+
+// Restore saved token on load
+(function() {
+  try {
+    const saved = localStorage.getItem('cesiumIonToken');
+    if (saved) {
+      document.getElementById('cesium-token').value = saved;
+      Cesium.Ion.defaultAccessToken = saved;
+    }
+  } catch(e) {}
+})();
+
+// Double-click to inspect entities (single left-click is pan)
+viewer.screenSpaceEventHandler.setInputAction(function(click) {
+  const picked = viewer.scene.pick(click.position);
+  if (Cesium.defined(picked) && picked.id && picked.id.description) {
+    const desc = picked.id.description.getValue ? picked.id.description.getValue() : picked.id.description;
+    const name = picked.id.name || '';
+    document.getElementById('info-content').innerHTML = `<h4>${name}</h4>${desc}`;
+    document.getElementById('info-box').style.display = 'block';
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+// ============================================================
+// Load data and initialize
+// ============================================================
+
+// Rebuild all entities (used when vertical exaggeration changes)
+async function rebuildEntities() {
+  if (!DATA) return;
+  buildGeneration++;
+
+  // Snapshot which groups are currently visible (from the checkboxes)
+  const visibleGroups = {};
+  Object.keys(entityGroups).forEach(k => {
+    const ents = entityGroups[k];
+    if (ents && ents.length > 0) {
+      visibleGroups[k] = ents[0].show;
+    }
+  });
+
+  // Only remove and rebuild entities that scale
+  const scaleGroups = Object.keys(entityGroups).filter(k =>
+    k.startsWith('airspace_') || k.startsWith('airway_') || k.startsWith('waypoint_') || k.startsWith('proc_') || k.startsWith('corridor_')
+  );
+  scaleGroups.forEach(k => {
+    if (entityGroups[k]) {
+      entityGroups[k].forEach(e => viewer.entities.remove(e));
+      delete entityGroups[k];
+    }
+  });
+
+  // Recreate only scaled groups
+  await terrainReady;
+  createAirspaceEntities(DATA.airspace);
+  createAirwayEntities(DATA.airways);
+  createWaypointEntities(DATA.waypoints);
+  createProcedureEntities(DATA.procedures, 'approaches');
+  createProcedureEntities(DATA.procedures, 'departures');
+  createProcedureEntities(DATA.procedures, 'arrivals');
+  createApproachCorridors(DATA.procedures);
+
+  // Restore visibility without rebuilding the panel or touching toggle states
+  Object.keys(visibleGroups).forEach(k => {
+    toggleGroup(k, visibleGroups[k]);
+  });
+}
+
+async function init() {
+  try {
+    const resp = await fetch('data/btv_airspace_data.json?v=' + Date.now());
+    DATA = await resp.json();
+    console.log('Loaded aviation data:', DATA);
+
+    createAirportEntities(DATA.airports);
+    createNavaidEntities(DATA.navaids);
+    createWaypointEntities(DATA.waypoints);
+    await terrainReady; // ensure terrain is loaded before AGL sampling
+    createAirspaceEntities(DATA.airspace);
+    createAirwayEntities(DATA.airways);
+    createProcedureEntities(DATA.procedures, 'approaches');
+    createProcedureEntities(DATA.procedures, 'departures');
+    createProcedureEntities(DATA.procedures, 'arrivals');
+    createApproachCorridors(DATA.procedures);
+
+    buildLayerPanel();
+
+    console.log('Initialization complete.');
+  } catch(err) {
+    console.error('Error loading data:', err);
+    document.getElementById('info-content').innerHTML =
+      '<h4>Error</h4>Could not load aviation data. Make sure to serve this via a local web server (not file://).';
+    document.getElementById('info-box').style.display = 'block';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
