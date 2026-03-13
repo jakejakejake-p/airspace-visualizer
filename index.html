@@ -1291,7 +1291,7 @@ function createAirwayEntities(airways) {
         minimumHeights: floors,
         maximumHeights: ceils,
         material: color.withAlpha(0.08),
-        outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+        outline: false
       },
       description: `<b>Airway ${awy.id}</b><br>Type: ${awy.type}-route<br>Fixes: ${fixes.map(f=>f.fix).join(' → ')}`
     }));
@@ -1305,7 +1305,7 @@ function createAirwayEntities(airways) {
         minimumHeights: floors,
         maximumHeights: ceils,
         material: color.withAlpha(0.08),
-        outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+        outline: false
       },
       description: `<b>Airway ${awy.id}</b><br>Type: ${awy.type}-route<br>Fixes: ${fixes.map(f=>f.fix).join(' → ')}`
     }));
@@ -1324,7 +1324,7 @@ function createAirwayEntities(airways) {
           minimumHeights: [floors[idx], floors[idx]],
           maximumHeights: [ceils[idx], ceils[idx]],
           material: color.withAlpha(0.08),
-          outline: true, outlineColor: color.withAlpha(0.3), outlineWidth: 1
+          outline: false
         }
       }));
     });
@@ -1349,7 +1349,7 @@ function createAirwayEntities(airways) {
           ]),
           perPositionHeight: true,
           material: color.withAlpha(0.06),
-          outline: true, outlineColor: color.withAlpha(0.2), outlineWidth: 1
+          outline: false
         }
       }));
 
@@ -1365,7 +1365,7 @@ function createAirwayEntities(airways) {
           ]),
           perPositionHeight: true,
           material: color.withAlpha(0.06),
-          outline: true, outlineColor: color.withAlpha(0.2), outlineWidth: 1
+          outline: false
         }
       }));
     }
@@ -1778,7 +1778,7 @@ function createApproachCorridors(procedures) {
         minimumHeights: rightEdge.map(p => p.altBotM),
         maximumHeights: rightEdge.map(p => p.altTopM),
         material: color.withAlpha(0.08),
-        outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+        outline: false
       }
     }));
 
@@ -1791,7 +1791,7 @@ function createApproachCorridors(procedures) {
         minimumHeights: leftEdge.map(p => p.altBotM),
         maximumHeights: leftEdge.map(p => p.altTopM),
         material: color.withAlpha(0.08),
-        outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+        outline: false
       }
     }));
 
@@ -1843,7 +1843,7 @@ function createApproachCorridors(procedures) {
           minimumHeights: [r.altBotM, l.altBotM],
           maximumHeights: [r.altTopM, l.altTopM],
           material: color.withAlpha(0.08),
-          outline: true, outlineColor: color.withAlpha(0.4), outlineWidth: 1
+          outline: false
         }
       }));
     });
