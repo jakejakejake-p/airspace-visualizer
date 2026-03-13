@@ -231,7 +231,7 @@
 
 // Cesium Ion token - get a free one at https://ion.cesium.com/tokens
 // Replace this with your own token for reliable terrain:
-Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYWE1OWUxNy1mMWZiLTQzYjYtYTQ0OS1kMWFjYmFkNjc5YzciLCJpZCI6NjQ3MjcsImlhdCI6MTcwNDk4NjczMX0.PEfDkFpGBliG0gR_JN6u3Rl0BFrSih_0wzMBnGFpNko';
+Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1MDI0MWEwNS02MzUyLTQ1OWEtYTJjZC0wY2JmNTZiODhiNTYiLCJpZCI6NDAzMDY4LCJpYXQiOjE3NzM0MDU3MjB9.mVihtFSRspEKUU-8ElC51HQcB8h8wjP10LUjcSHSc6M';
 
 const viewer = new Cesium.Viewer('cesiumContainer', {
   baseLayerPicker: true,
@@ -915,26 +915,58 @@ function createAirspaceEntities(airspace) {
             description: descHtml
           }));
 
+          // Ceiling edge
           if (ceilIsAGL) {
             const pts = outerCarto.map(c => Cesium.Cartesian3.fromRadians(c.lon, c.lat, c.h + ceilOffsetM));
             pts.push(pts[0]);
             entityGroups[groupName].push(viewer.entities.add({
-              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+              polyline: { positions: pts, width: 2, material: outlineColor, clampToGround: false }
             }));
           } else {
             const pts = outerCarto.map(c => Cesium.Cartesian3.fromRadians(c.lon, c.lat, extHeight));
             pts.push(pts[0]);
             entityGroups[groupName].push(viewer.entities.add({
-              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+              polyline: { positions: pts, width: 2, material: outlineColor, clampToGround: false }
             }));
           }
 
+          // Floor edge
           if (floorIsAGL || as.floor_type === 'SFC') {
             const pts = outerFloorPos.slice();
             pts.push(pts[0]);
             entityGroups[groupName].push(viewer.entities.add({
-              polyline: { positions: pts, width: 1, material: outlineColor, clampToGround: false }
+              polyline: { positions: pts, width: 2, material: outlineColor, clampToGround: false }
             }));
+          }
+
+          // Vertical corner edges for terrain-sampled polygons
+          const outerDeg = outerCarto.map(c => ({
+            lon: Cesium.Math.toDegrees(c.lon),
+            lat: Cesium.Math.toDegrees(c.lat),
+            h: c.h
+          }));
+          const nPts = outerDeg.length;
+          for (let vi = 0; vi < nPts; vi++) {
+            const prev = outerDeg[(vi - 1 + nPts) % nPts];
+            const curr = outerDeg[vi];
+            const next = outerDeg[(vi + 1) % nPts];
+            const b1 = Math.atan2(curr.lon - prev.lon, curr.lat - prev.lat);
+            const b2 = Math.atan2(next.lon - curr.lon, next.lat - curr.lat);
+            let diff = Math.abs(b2 - b1);
+            if (diff > Math.PI) diff = 2 * Math.PI - diff;
+            if (diff > Cesium.Math.toRadians(40)) {
+              const floorH = curr.h + floorOffsetM;
+              const ceilH = ceilIsAGL ? (curr.h + ceilOffsetM) : extHeight;
+              entityGroups[groupName].push(viewer.entities.add({
+                polyline: {
+                  positions: [
+                    Cesium.Cartesian3.fromDegrees(curr.lon, curr.lat, floorH),
+                    Cesium.Cartesian3.fromDegrees(curr.lon, curr.lat, ceilH)
+                  ],
+                  width: 2, material: outlineColor, clampToGround: false
+                }
+              }));
+            }
           }
         }
 
@@ -966,6 +998,18 @@ function createAirspaceEntities(airspace) {
               name: as.name,
               polygon: { hierarchy: hierarchy, height: fallbackFloor, extrudedHeight: fallbackCeil, material: color, outline: false },
               description: descHtml
+            }));
+            // Draw edges for fallback (flat) rendering
+            const fbEdge = as.polygon.map(pt => ({ lon: pt[1], lat: pt[0] }));
+            const fbCeilPts = fbEdge.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, fallbackCeil));
+            fbCeilPts.push(fbCeilPts[0]);
+            entityGroups[groupName].push(viewer.entities.add({
+              polyline: { positions: fbCeilPts, width: 2, material: outlineColor, clampToGround: false }
+            }));
+            const fbFloorPts = fbEdge.map(p => Cesium.Cartesian3.fromDegrees(p.lon, p.lat, fallbackFloor));
+            fbFloorPts.push(fbFloorPts[0]);
+            entityGroups[groupName].push(viewer.entities.add({
+              polyline: { positions: fbFloorPts, width: 2, material: outlineColor, clampToGround: false }
             }));
           });
         }
